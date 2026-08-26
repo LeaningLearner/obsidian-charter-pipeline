@@ -8,6 +8,12 @@
 
 <br/>
 
+> **💡 一句话总结 / In a nutshell**  
+> **把沉重的目录和复杂的进度条，精简成了几根散落悬浮的高级极简线条，悬浮能看公式摘要，点击能精准置顶跳转。**  
+> *(Replaces bulky outline sidebars and noisy progress bars with a few elegant, floating minimalist dash lines — hover to preview KaTeX formula excerpts, click to smooth scroll & pin to the top.)*
+
+<br/>
+
 [![GitHub Release](https://img.shields.io/github/v/release/LeaningLearner/obsidian-charter-pipeline?style=flat-square&color=3b82f6&label=Release)](https://github.com/LeaningLearner/obsidian-charter-pipeline/releases)
 [![Obsidian MinApp](https://img.shields.io/badge/Obsidian-%E2%89%A5%200.15.0-7c3aed?style=flat-square&logo=obsidian)](https://obsidian.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE)
@@ -25,6 +31,8 @@
 ## 📖 English
 
 ### 🌟 Overview
+
+> **💡 Core Concept**: Replaces bulky outline sidebars and noisy progress bars with a few elegant, floating minimalist dash lines — hover to preview KaTeX formula excerpts, click to smooth scroll & pin to the top.
 
 **Charter Pipeline** brings the sleek, ultra-minimalist timeline navigation of **Linear** directly into Obsidian. 
 
@@ -86,6 +94,8 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 ## 🇨🇳 简体中文
 
 ### 🌟 插件简介
+
+> **💡 一句话总结**：**把沉重的目录和复杂的进度条，精简成了几根散落悬浮的高级极简线条，悬浮能看公式摘要，点击能精准置顶跳转。**
 
 **Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了 **Linear 的极简散落横线步进流** 美学。
 
