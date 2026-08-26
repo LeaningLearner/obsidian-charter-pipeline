@@ -8,12 +8,6 @@
 
 <br/>
 
-> **💡 一句话总结 / In a nutshell**  
-> **把沉重的目录和复杂的进度条，精简成了几根散落悬浮的高级极简线条，悬浮能看公式摘要，点击能精准置顶跳转。**  
-> *(Replaces bulky outline sidebars and noisy progress bars with a few elegant, floating minimalist dash lines — hover to preview KaTeX formula excerpts, click to smooth scroll & pin to the top.)*
-
-<br/>
-
 [![GitHub Release](https://img.shields.io/github/v/release/LeaningLearner/obsidian-charter-pipeline?style=flat-square&color=3b82f6&label=Release)](https://github.com/LeaningLearner/obsidian-charter-pipeline/releases)
 [![Obsidian MinApp](https://img.shields.io/badge/Obsidian-%E2%89%A5%200.15.0-7c3aed?style=flat-square&logo=obsidian)](https://obsidian.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE)
@@ -22,6 +16,10 @@
 <br/>
 
 [English](#-english) • [简体中文](#-简体中文)
+
+<br/>
+
+<img src="assets/banner-en.png" alt="Charter Pipeline Banner" width="100%" />
 
 </div>
 
@@ -92,6 +90,12 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 <a name="简体中文"></a>
 ## 🇨🇳 简体中文
+
+<div align="center">
+  <img src="assets/banner-zh.png" alt="Charter Pipeline 中文横幅" width="100%" />
+</div>
+
+<br/>
 
 ### 🌟 插件简介
 
