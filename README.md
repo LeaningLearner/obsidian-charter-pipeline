@@ -2,9 +2,9 @@
 
 # 🪐 Charter Pipeline
 
-**Minimalist Codex-style floating horizontal dash stepper for Obsidian with KaTeX formula preview & pinned-top navigation.**
+**Minimalist Linear-style floating horizontal dash stepper for Obsidian with KaTeX formula preview & pinned-top navigation.**
 
-*极简内嵌式 Codex 风格文章章节横线步进流导航插件：散落悬浮、LaTeX / KaTeX 公式预览、精准置顶跳转与分屏自适应隐藏。*
+*极简内嵌式 Linear 风格文章章节横线步进流导航插件：散落悬浮、LaTeX / KaTeX 公式预览、精准置顶跳转与分屏自适应隐藏。*
 
 <br/>
 
@@ -26,7 +26,7 @@
 
 ### 🌟 Overview
 
-**Charter Pipeline** brings the sleek, ultra-minimalist chapter timeline navigation of **Codex & Linear** directly into Obsidian. 
+**Charter Pipeline** brings the sleek, ultra-minimalist timeline navigation of **Linear** directly into Obsidian. 
 
 Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, and **two-pass pinned-top navigation**, navigating complex math and study notes has never been more effortless.
 
@@ -34,7 +34,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 ### ✨ Key Features
 
-- 🪐 **Minimalist Codex-Style Floating Dashes**:
+- 🪐 **Minimalist Linear-Style Floating Dashes**:
   - Pure floating horizontal lines on your note margin with zero container envelope background.
   - Distinct hierarchical dash lengths for headings: `H1` (16px), `H2` (12px), `H3` (9px), `H4~H6` (6px).
 - 💬 **KaTeX Hover Tooltip & 3-Line Excerpt**:
@@ -87,7 +87,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 ### 🌟 插件简介
 
-**Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了类似 **Codex & Linear 的极简散落横线步进流**。
+**Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了 **Linear 的极简散落横线步进流** 美学。
 
 区别于传统占用大量屏幕空间的臃肿侧边栏目录或信息杂乱的代码小地图，Charter Pipeline 在笔记左侧边缘渲染一列**纯净散落的悬浮横线条**。通过精巧的长短区分（H1~H6）、**支持 KaTeX 数学公式渲染的 3 行气泡卡片**、以及**像素级绝对置顶平滑跳转**，让长文浏览与章节检索变得优雅而极速。
 
@@ -95,7 +95,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 ### ✨ 核心特性
 
-- 🪐 **Codex 级极简散落横线流**：
+- 🪐 **Linear 级极简散落横线流**：
   - 纯粹自由散落悬浮在正文左侧，无厚重的外壳背景，还原纯粹原生质感；
   - 严格按标题层级长短区分：`H1`（16px）、`H2`（12px）、`H3`（9px）、`H4~H6`（6px）。
 - 💬 **3 行 KaTeX 公式气泡与几何中心对齐**：

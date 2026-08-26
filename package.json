@@ -1,7 +1,7 @@
 {
   "name": "obsidian-charter-pipeline",
   "version": "1.0.0",
-  "description": "Minimalist Codex-style floating horizontal dash stepper with KaTeX formula preview and pinned top navigation for Obsidian.",
+  "description": "Minimalist Linear-style floating horizontal dash stepper with KaTeX formula preview and pinned top navigation for Obsidian.",
   "main": "main.js",
   "scripts": {
     "dev": "node main.js"
@@ -9,7 +9,8 @@
   "keywords": [
     "obsidian",
     "obsidian-plugin",
-    "codex",
+    "linear",
+    "linear-style",
     "stepper",
     "outline",
     "toc",
