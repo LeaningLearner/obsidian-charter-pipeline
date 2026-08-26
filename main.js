@@ -11,6 +11,66 @@ const DEFAULT_SETTINGS = {
   narrowThreshold: 460
 };
 
+const I18N = {
+  en: {
+    tabTitle: 'Charter Pipeline Settings',
+    showExcerptName: 'Show 3-Line Excerpt Preview',
+    showExcerptDesc: 'Display a 3-line excerpt of the section with KaTeX formula rendering below the title in the hover popover card. When disabled, only the clean title is shown.',
+    ignoreH1Name: 'Ignore First H1 (# Note Title)',
+    ignoreH1Desc: 'When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections.',
+    maxLevelName: 'Max Heading Level',
+    maxLevelDesc: 'Filter deeper subheadings (e.g. choose H1~H3 to hide H4~H6).',
+    maxLevelOptions: {
+      '2': 'H1 ~ H2',
+      '3': 'H1 ~ H3',
+      '4': 'H1 ~ H4',
+      '6': 'All H1 ~ H6 (Recommended)'
+    },
+    activeColorName: 'Active Indicator Color',
+    activeColorDesc: 'Customize the highlight color for the currently active reading section.',
+    activeColorOptions: {
+      '#3b82f6': 'Azure Blue (Default / Linear)',
+      '#8b5cf6': 'Violet (Geek)',
+      '#f59e0b': 'Sunset Amber (Warm)',
+      '#ec4899': 'Sakura Pink (Vibrant)',
+      'var(--interactive-accent)': 'Theme Accent Color'
+    },
+    narrowThresholdName: 'Narrow View Auto-Hide Threshold (px)',
+    narrowThresholdDesc: 'Automatically hide the stepper when note pane width is below this threshold to prevent overlapping text.'
+  },
+  zh: {
+    tabTitle: 'Charter Pipeline 设置',
+    showExcerptName: '开启正文 3 行摘要预览',
+    showExcerptDesc: '在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。',
+    ignoreH1Name: '忽略文档首个一级大标题 (# 篇名)',
+    ignoreH1Desc: '开启后，文章最开头的第一个 H1 大标题不会生成横线，仅展示正文小节。',
+    maxLevelName: '最大展示标题层级',
+    maxLevelDesc: '例如设为 3 则只展示 H1~H3 章节，过滤更深层级的子小节。',
+    maxLevelOptions: {
+      '2': '仅 H1 ~ H2',
+      '3': 'H1 ~ H3',
+      '4': 'H1 ~ H4',
+      '6': '全部 H1 ~ H6 (推荐)'
+    },
+    activeColorName: '激活高亮横线颜色',
+    activeColorDesc: '自定义当前阅读位置的横线条加亮颜色。',
+    activeColorOptions: {
+      '#3b82f6': '天青蓝 (默认 / Linear 质感)',
+      '#8b5cf6': '紫罗兰 (极客紫)',
+      '#f59e0b': '日落琥珀 (温和橙)',
+      '#ec4899': '樱花粉 (活力粉)',
+      'var(--interactive-accent)': '跟随主题强调色'
+    },
+    narrowThresholdName: '分屏/窄屏自动隐藏宽度阈值 (px)',
+    narrowThresholdDesc: '当笔记窗口宽度小于该像素时，横线流自动隐藏以避免遮挡正文。'
+  }
+};
+
+function getLocale() {
+  const lang = window.localStorage.getItem('language') || (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
+  return String(lang).toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
 class ChapterParser {
   static parse(content, headings, settings) {
     if (!headings || headings.length === 0) return [];
@@ -57,19 +117,15 @@ class ChapterParser {
 
         const cleanedLines = chapterLines.map((l) => {
           let s = l.replace(/<!--[\s\S]*?-->/g, '').trim();
-          // 剥除所有引用前缀 >
           while (s.startsWith('>')) {
             s = s.substring(1).trim();
           }
-          // 剥除 Callout 标记如 [!problem] 或 [!solution]
           s = s.replace(/^\[![\w-]+\]\s*/i, '');
-          // 剥除双链 [[...|...]]
           s = s.replace(/\[\[.*?\|(.*?)\]\]/g, '$1').replace(/\[\[(.*?)\]\]/g, '$1');
           return s;
         }).filter((s) => s && !s.startsWith('#') && !s.startsWith('---') && !s.startsWith('```'));
 
         let fullText = cleanedLines.join('\n');
-        // 将块级公式 $$...$$ 转为行内 $...$，在气泡中紧凑展示并被 KaTeX 渲染
         fullText = fullText.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, math) => {
           const compact = math.replace(/\r?\n/g, ' ').replace(/\\\\/g, ' ').trim();
           return '$' + compact + '$';
@@ -107,11 +163,14 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Charter Pipeline 设置' });
+    const locale = getLocale();
+    const t = I18N[locale] || I18N.en;
+
+    containerEl.createEl('h2', { text: t.tabTitle });
 
     new Setting(containerEl)
-      .setName('开启正文 3 行摘要预览')
-      .setDesc('开启后在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。')
+      .setName(t.showExcerptName)
+      .setDesc(t.showExcerptDesc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showExcerpt !== false)
@@ -123,8 +182,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('忽略文档首个一级大标题 (# 篇名)')
-      .setDesc('开启后，文章最开头的第一个 H1 大标题不会生成横线，仅展示正文小节。')
+      .setName(t.ignoreH1Name)
+      .setDesc(t.ignoreH1Desc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.ignoreFirstH1)
@@ -135,44 +194,41 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName('最大展示标题层级')
-      .setDesc('例如设为 3 则只展示 H1~H3 章节，过滤更深层级的子小节。')
-      .addDropdown((drop) =>
+    const levelSetting = new Setting(containerEl)
+      .setName(t.maxLevelName)
+      .setDesc(t.maxLevelDesc)
+      .addDropdown((drop) => {
+        for (const [key, val] of Object.entries(t.maxLevelOptions)) {
+          drop.addOption(key, val);
+        }
         drop
-          .addOption('2', '仅 H1 ~ H2')
-          .addOption('3', 'H1 ~ H3')
-          .addOption('4', 'H1 ~ H4')
-          .addOption('6', '全部 H1 ~ H6 (推荐)')
           .setValue(String(this.plugin.settings.maxHeadingLevel))
           .onChange(async (value) => {
             this.plugin.settings.maxHeadingLevel = parseInt(value, 10);
             await this.plugin.saveSettings();
             this.plugin.updateAllMarkdownViews();
-          })
-      );
+          });
+      });
 
-    new Setting(containerEl)
-      .setName('激活高亮横线颜色')
-      .setDesc('自定义当前阅读位置的横线条加亮颜色。')
-      .addDropdown((drop) =>
+    const colorSetting = new Setting(containerEl)
+      .setName(t.activeColorName)
+      .setDesc(t.activeColorDesc)
+      .addDropdown((drop) => {
+        for (const [key, val] of Object.entries(t.activeColorOptions)) {
+          drop.addOption(key, val);
+        }
         drop
-          .addOption('#3b82f6', '天青蓝 (默认 / Linear 质感)')
-          .addOption('#8b5cf6', '紫罗兰 (极客紫)')
-          .addOption('#f59e0b', '日落琥珀 (温和橙)')
-          .addOption('#ec4899', '樱花粉 (活力粉)')
-          .addOption('var(--interactive-accent)', '跟随主题强调色')
           .setValue(this.plugin.settings.activeColor)
           .onChange(async (value) => {
             this.plugin.settings.activeColor = value;
             await this.plugin.saveSettings();
             this.plugin.updateAllMarkdownViews();
-          })
-      );
+          });
+      });
 
     new Setting(containerEl)
-      .setName('分屏/窄屏自动隐藏宽度阈值 (px)')
-      .setDesc('当笔记窗口宽度小于该像素时，横线流自动隐藏以避免遮挡正文。')
+      .setName(t.narrowThresholdName)
+      .setDesc(t.narrowThresholdDesc)
       .addSlider((slider) =>
         slider
           .setLimits(350, 700, 10)
@@ -195,7 +251,7 @@ class ChapterPipelinePlugin extends Plugin {
   }
 
   async onload() {
-    console.log('Loading Charter Pipeline Pro with Pure KaTeX Text & Alignment...');
+    console.log('Loading Charter Pipeline Pro with Bilingual Settings...');
 
     await this.loadSettings();
     this.addSettingTab(new ChapterPipelineSettingTab(this.app, this));

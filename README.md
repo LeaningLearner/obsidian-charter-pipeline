@@ -8,6 +8,12 @@
 
 <br/>
 
+> **💡 一句话总结 / In a nutshell**  
+> **把沉重的目录和复杂的进度条，精简成了几根散落悬浮的高级极简线条，悬浮能看公式摘要，点击能精准置顶跳转。**  
+> *(Replaces bulky outline sidebars and noisy progress bars with a few elegant, floating minimalist dash lines — hover to preview KaTeX formula excerpts, click to smooth scroll & pin to the top.)*
+
+<br/>
+
 [![GitHub Release](https://img.shields.io/github/v/release/LeaningLearner/obsidian-charter-pipeline?style=flat-square&color=3b82f6&label=Release)](https://github.com/LeaningLearner/obsidian-charter-pipeline/releases)
 [![Obsidian MinApp](https://img.shields.io/badge/Obsidian-%E2%89%A5%200.15.0-7c3aed?style=flat-square&logo=obsidian)](https://obsidian.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE)
@@ -55,7 +61,8 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
   - Zero frame drops and zero CPU overhead even on 10,000-line math notes.
 - 📱 **Split-Screen & Narrow View Auto-Hide**:
   - Automatically fades out when pane width is narrow (e.g. split-screen with PDF notes) so it never clashes with your text.
-- ⚙️ **Rich Settings**:
+- ⚙️ **Bilingual Settings Panel**:
+  - English by default with automatic Chinese localization support.
   - Toggle 3-line excerpt preview, heading level filters (H1~H3 or H1~H6), ignore first H1 note title, custom active highlight colors (Azure Blue, Violet, Amber, Sakura Pink, Theme Accent).
 
 ---
@@ -78,11 +85,11 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 | Setting | Description | Default |
 | :--- | :--- | :--- |
-| **开启正文 3 行摘要预览** | Toggle 3-line excerpt with KaTeX formulas below the title in the popover card. | `Enabled (true)` |
-| **忽略文档首个一级大标题** | Ignores the very first `# Note Title` from generating a dash line. | `Disabled (false)` |
-| **最大展示标题层级** | Filter deeper subheadings (e.g. H1~H2, H1~H3, H1~H6). | `H1 ~ H6` |
-| **激活高亮横线颜色** | Color of active reading position (Azure Blue, Violet, Amber, Sakura, Theme). | `Azure Blue (#3b82f6)` |
-| **分屏自动隐藏宽度阈值** | Minimum pane width in pixels before the stepper automatically hides. | `460px` |
+| **Show 3-Line Excerpt Preview** | Display a 3-line excerpt with KaTeX formula rendering below the title in the hover popover card. When disabled, only the clean title is shown. | `Enabled (true)` |
+| **Ignore First H1 (# Note Title)** | When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections. | `Disabled (false)` |
+| **Max Heading Level** | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `All H1 ~ H6` |
+| **Active Indicator Color** | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
+| **Narrow View Auto-Hide Threshold (px)** | Automatically hide the stepper when note pane width is below this threshold (px) to prevent overlapping text. | `460px` |
 
 ---
 
@@ -124,7 +131,8 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
   - 翻阅上万字、上百公式的长篇数学笔记时，依然保持 **0 掉帧、0 CPU 负担**。
 - 📱 **分屏与窄屏自适应隐藏**：
   - 左边写笔记、右边开 PDF 双拼时，自动感应宽度并智能隐去，绝不遮挡正文内容。
-- ⚙️ **丰富的个性化设置**：
+- ⚙️ **中英双语设置面板**：
+  - 默认英文，并智能自适应中文系统语言；
   - 可选是否开启 3 行摘要预览、过滤展示层级（H1~H3 或全部）、忽略文档首个 H1 主标题、自定义高亮色系（默认天青蓝、紫罗兰、日落琥珀、樱花粉、主题强调色）。
 
 ---
@@ -147,11 +155,11 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 | 配置项 | 功能说明 | 默认值 |
 | :--- | :--- | :--- |
-| **开启正文 3 行摘要预览** | 在气泡中换行展示正文开头的 3 行摘要（支持 KaTeX 公式）。关闭后仅展示纯净标题。 | `开启 (true)` |
+| **开启正文 3 行摘要预览** | 在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。 | `开启 (true)` |
 | **忽略文档首个一级大标题** | 开启后，文章最开头的 `# 篇名` 不会生成横线，仅展示正文小节。 | `关闭 (false)` |
-| **最大展示标题层级** | 过滤更深层级的子小节（如设为 H1~H3 则忽略 H4~H6）。 | `全部 H1 ~ H6` |
+| **最大展示标题层级** | 过滤更深层级的子小节（如选择 H1~H3 则忽略 H4~H6）。 | `全部 H1 ~ H6` |
 | **激活高亮横线颜色** | 自定义当前阅读章节的横线加亮颜色（天青蓝、紫罗兰、琥珀、樱花粉、主题色）。 | `天青蓝 (#3b82f6)` |
-| **分屏自动隐藏宽度阈值** | 笔记窗口宽度小于该像素时自动隐藏横线流以防止遮挡。 | `460px` |
+| **分屏/窄屏自动隐藏宽度阈值** | 笔记窗口宽度小于该像素时自动隐藏横线流以防止遮挡。 | `460px` |
 
 ---
 
