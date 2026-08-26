@@ -1,0 +1,29 @@
+{
+  "name": "obsidian-charter-pipeline",
+  "version": "1.0.0",
+  "description": "Minimalist Codex-style floating horizontal dash stepper with KaTeX formula preview and pinned top navigation for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node main.js"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "codex",
+    "stepper",
+    "outline",
+    "toc",
+    "navigation",
+    "katex"
+  ],
+  "author": "择梦舟",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeaningLearner/obsidian-charter-pipeline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LeaningLearner/obsidian-charter-pipeline/issues"
+  },
+  "homepage": "https://github.com/LeaningLearner/obsidian-charter-pipeline#readme"
+}

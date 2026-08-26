@@ -1,0 +1,175 @@
+/* ========================================================
+   Charter Pipeline - Ultra-Refined Codex Aesthetic
+   ======================================================== */
+
+.codex-stepper-container {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  user-select: none;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s ease;
+}
+
+/* 窄屏/分屏自适应隐藏 */
+.codex-stepper-container.is-narrow {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 散落悬浮轨道 */
+.codex-stepper-track {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 2px 0;
+  pointer-events: auto;
+  position: relative;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 单个横线项目（触碰热区优化） */
+.codex-dash-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 3px 6px;
+  min-height: 10px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* 极简散落横线条 */
+.codex-dash-bar {
+  display: block;
+  height: 1.5px;
+  border-radius: 1px;
+  background-color: var(--text-faint, rgba(125, 125, 125, 0.3));
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1), 
+              background-color 0.18s ease, 
+              height 0.18s ease, 
+              box-shadow 0.18s ease;
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+/* 层级长度定义 */
+.codex-dash-item.level-1 .codex-dash-bar { width: 16px; height: 2px; }
+.codex-dash-item.level-2 .codex-dash-bar { width: 12px; }
+.codex-dash-item.level-3 .codex-dash-bar { width: 9px; }
+.codex-dash-item.level-4 .codex-dash-bar,
+.codex-dash-item.level-5 .codex-dash-bar,
+.codex-dash-item.level-6 .codex-dash-bar { width: 6px; }
+
+/* 鼠标悬浮态 */
+.codex-dash-item:hover .codex-dash-bar {
+  width: 20px;
+  background-color: var(--text-normal, #222222);
+  height: 2px;
+}
+
+/* 激活态（当前阅读位置：默认天青蓝高亮） */
+.codex-dash-item.active .codex-dash-bar {
+  width: 20px;
+  height: 2px;
+  background-color: var(--codex-active-color, var(--interactive-accent, #3b82f6));
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.5);
+}
+
+/* ---------------- Codex 同款独立悬浮气泡卡片 (固定屏幕坐标、垂直中心精准对齐横线) ---------------- */
+.codex-floating-tooltip {
+  position: fixed !important;
+  background: var(--background-primary, #ffffff);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  padding: 10px 14px;
+  width: 290px;
+  max-width: 330px;
+  box-sizing: border-box;
+  z-index: 99999 !important;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-50%) translateX(-6px);
+  transition: opacity 0.14s ease, transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.14s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.codex-floating-tooltip.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* 标题区：加粗、固定宽度自然换行 */
+.codex-tooltip-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-normal);
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.codex-tooltip-title p {
+  margin: 0;
+  display: inline;
+}
+
+/* 正文摘要区：固定最多3行、支持 KaTeX 公式渲染、超出自动用 ... 截断、浅色未加粗 */
+.codex-tooltip-excerpt {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.55;
+  word-break: break-word;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--background-modifier-border-focus, rgba(125, 125, 125, 0.12));
+}
+
+.codex-tooltip-excerpt p {
+  margin: 0;
+  padding: 0;
+  display: inline;
+}
+
+.codex-tooltip-excerpt .math {
+  font-size: 11.5px;
+}
+
+/* 彻底清理气泡内部可能混入的 Callout 和块引用样式，保持纯净文本 */
+.codex-tooltip-excerpt .callout,
+.codex-tooltip-excerpt blockquote {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
