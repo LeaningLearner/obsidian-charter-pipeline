@@ -4,11 +4,13 @@ const { Plugin, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting } = re
 
 const DEFAULT_SETTINGS = {
   minHeadingLevel: 1,
-  maxHeadingLevel: 6,
+  maxHeadingLevel: 2,
   ignoreFirstH1: false,
   showExcerpt: true,
   activeColor: '#3b82f6',
-  narrowThreshold: 460
+  narrowThreshold: 460,
+  enableSound: true,
+  soundVolume: 50
 };
 
 const I18N = {
@@ -21,10 +23,10 @@ const I18N = {
     maxLevelName: 'Max Heading Level',
     maxLevelDesc: 'Filter deeper subheadings (e.g. choose H1~H3 to hide H4~H6).',
     maxLevelOptions: {
-      '2': 'H1 ~ H2',
+      '2': 'H1 ~ H2 (Recommended / Default)',
       '3': 'H1 ~ H3',
       '4': 'H1 ~ H4',
-      '6': 'All H1 ~ H6 (Recommended)'
+      '6': 'All H1 ~ H6'
     },
     activeColorName: 'Active Indicator Color',
     activeColorDesc: 'Customize the highlight color for the currently active reading section.',
@@ -36,7 +38,12 @@ const I18N = {
       'var(--interactive-accent)': 'Theme Accent Color'
     },
     narrowThresholdName: 'Narrow View Auto-Hide Threshold (px)',
-    narrowThresholdDesc: 'Automatically hide the stepper when note pane width is below this threshold to prevent overlapping text.'
+    narrowThresholdDesc: 'Automatically hide the stepper when note pane width is below this threshold to prevent overlapping text.',
+    soundSectionTitle: 'Tactile Sound Effects',
+    enableSoundName: 'Enable Tactile Micro-Switch Sound',
+    enableSoundDesc: 'Play subtle mechanical micro-switch sounds on clicking chapters and scrolling across headings.',
+    soundVolumeName: 'Sound Volume (%)',
+    soundVolumeDesc: 'Adjust the volume of interactive tactile sound effects (Default: 50%).'
   },
   zh: {
     tabTitle: 'Charter Pipeline 设置',
@@ -45,12 +52,12 @@ const I18N = {
     ignoreH1Name: '忽略文档首个一级大标题 (# 篇名)',
     ignoreH1Desc: '开启后，文章最开头的第一个 H1 大标题不会生成横线，仅展示正文小节。',
     maxLevelName: '最大展示标题层级',
-    maxLevelDesc: '例如设为 3 则只展示 H1~H3 章节，过滤更深层级的子小节。',
+    maxLevelDesc: '例如设为 2 则只展示 H1~H2 章节，过滤更深层级的子小节。',
     maxLevelOptions: {
-      '2': '仅 H1 ~ H2',
+      '2': '仅 H1 ~ H2 (默认 / 推荐)',
       '3': 'H1 ~ H3',
       '4': 'H1 ~ H4',
-      '6': '全部 H1 ~ H6 (推荐)'
+      '6': '全部 H1 ~ H6'
     },
     activeColorName: '激活高亮横线颜色',
     activeColorDesc: '自定义当前阅读位置的横线条加亮颜色。',
@@ -62,13 +69,130 @@ const I18N = {
       'var(--interactive-accent)': '跟随主题强调色'
     },
     narrowThresholdName: '分屏/窄屏自动隐藏宽度阈值 (px)',
-    narrowThresholdDesc: '当笔记窗口宽度小于该像素时，横线流自动隐藏以避免遮挡正文。'
+    narrowThresholdDesc: '当笔记窗口宽度小于该像素时，横线流自动隐藏以避免遮挡正文。',
+    soundSectionTitle: '极简拟物微动音效',
+    enableSoundName: '开启拟物微动音效',
+    enableSoundDesc: '在点击横线跳转及页面滚动跨越章节时，播放轻微清脆的机械微动与转轮刻度音。',
+    soundVolumeName: '音效音量 (%)',
+    soundVolumeDesc: '调节交互音效的音量大小（默认 50% 柔和舒适音量）。'
   }
 };
 
 function getLocale() {
   const lang = window.localStorage.getItem('language') || (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
   return String(lang).toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.lastScrollTime = 0;
+  }
+
+  getAudioContext() {
+    if (!this.ctx && (typeof window !== 'undefined')) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    return this.ctx;
+  }
+
+  playClick(volumePct = 50) {
+    if (volumePct <= 0) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const masterGain = ctx.createGain();
+      const vol = (Math.max(0, Math.min(100, volumePct)) / 100) * 0.12;
+      masterGain.gain.setValueAtTime(vol, now);
+      masterGain.connect(ctx.destination);
+
+      // 1. 拟物微动清脆短脉冲（~1850Hz 带通瞬态）
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1850, now);
+      filter.Q.setValueAtTime(3.5, now);
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.032);
+
+      gain.gain.setValueAtTime(1.0, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.038);
+
+      // 2. 极短微撞声（~450Hz 触底瞬态）
+      const oscLow = ctx.createOscillator();
+      const gainLow = ctx.createGain();
+      oscLow.type = 'sine';
+      oscLow.frequency.setValueAtTime(450, now);
+      oscLow.frequency.exponentialRampToValueAtTime(150, now + 0.02);
+
+      gainLow.gain.setValueAtTime(0.6, now);
+      gainLow.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
+
+      oscLow.connect(gainLow);
+      gainLow.connect(masterGain);
+
+      oscLow.start(now);
+      oscLow.stop(now + 0.025);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  playScrollTick(volumePct = 50) {
+    if (volumePct <= 0) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastScrollTime < 75) return;
+    this.lastScrollTime = nowMs;
+
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const masterGain = ctx.createGain();
+      const vol = (Math.max(0, Math.min(100, volumePct)) / 100) * 0.06;
+      masterGain.gain.setValueAtTime(vol, now);
+      masterGain.connect(ctx.destination);
+
+      // 机械转轮刻度轻音（~920Hz 短促柔和）
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(920, now);
+      osc.frequency.exponentialRampToValueAtTime(350, now + 0.016);
+
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.018);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.02);
+    } catch (e) {
+      // ignore
+    }
+  }
 }
 
 class ChapterParser {
@@ -143,8 +267,10 @@ class ChapterParser {
 
       chapters.push({
         title: cleanTitle,
+        rawHeading: currentH.heading,
         level: currentH.level,
         line: currentH.position.start.line,
+        headingIndex: i,
         summaryMarkdown
       });
     }
@@ -240,34 +366,108 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
             this.plugin.updateAllMarkdownViews();
           })
       );
+
+    containerEl.createEl('h3', { text: t.soundSectionTitle });
+
+    new Setting(containerEl)
+      .setName(t.enableSoundName)
+      .setDesc(t.enableSoundDesc)
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.enableSound !== false)
+          .onChange(async (value) => {
+            this.plugin.settings.enableSound = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t.soundVolumeName)
+      .setDesc(t.soundVolumeDesc)
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 100, 5)
+          .setValue(this.plugin.settings.soundVolume !== undefined ? this.plugin.settings.soundVolume : 50)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.soundVolume = value;
+            await this.plugin.saveSettings();
+            if (this.plugin.settings.enableSound !== false) {
+              this.plugin.soundEngine.playClick(value);
+            }
+          })
+      );
   }
+}
+
+function normalizeHeadingText(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\[\[.*?\|(.*?)\]\]/g, '$1')
+    .replace(/\[\[(.*?)\]\]/g, '$1')
+    .replace(/\[status::.*?\]/gi, '')
+    .replace(/[\$#\*=`~_\[\]\(\)（）:：·、\.,，。!！\?？\\/+\-—\s\u200B-\u200D\uFEFF]/g, '')
+    .toLowerCase();
 }
 
 class ChapterPipelinePlugin extends Plugin {
   constructor(app, manifest) {
     super(app, manifest);
     this.observers = new Map();
+    this.viewObservers = new Map();
+    this.renderVersions = new Map();
+    this.scrollBindings = new Map();
+    this.soundEngine = new SoundEngine();
     this.settings = DEFAULT_SETTINGS;
+    this.refreshFrame = null;
+    this.refreshTimer = null;
   }
 
   async onload() {
-    console.log('Loading Charter Pipeline Pro with Bilingual Settings...');
+    console.log('Loading Charter Pipeline Pro with Bilingual Settings & Tactile Sound...');
 
     await this.loadSettings();
     this.addSettingTab(new ChapterPipelineSettingTab(this.app, this));
 
+    // 监听活动 Leaf 切换
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
-        this.updateAllMarkdownViews();
+        this.scheduleUpdateAllMarkdownViews();
       })
     );
 
+    // 监听文件打开（确保编辑与阅读模式开篇即加载横线流）
+    this.registerEvent(
+      this.app.workspace.on('file-open', () => {
+        this.scheduleUpdateAllMarkdownViews();
+      })
+    );
+
+    // 监听视图布局与视图模式切换（如 Ctrl+E 编辑/阅读视图切换）
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
-        this.updateAllMarkdownViews();
+        this.scheduleUpdateAllMarkdownViews();
       })
     );
 
+    // 监听编辑模式输入（防抖实时刷新章节大纲）
+    let editorChangeTimeout = null;
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (editor, info) => {
+        if (editorChangeTimeout) clearTimeout(editorChangeTimeout);
+        editorChangeTimeout = setTimeout(() => {
+          if (info && info.file) {
+            const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+            if (activeView && activeView.file && activeView.file.path === info.file.path) {
+              this.attachStepperToView(activeView);
+            }
+          }
+        }, 300);
+      })
+    );
+
+    // 监听元数据缓存更新
     this.registerEvent(
       this.app.metadataCache.on('changed', (file) => {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -278,7 +478,7 @@ class ChapterPipelinePlugin extends Plugin {
     );
 
     this.app.workspace.onLayoutReady(() => {
-      this.updateAllMarkdownViews();
+      this.scheduleUpdateAllMarkdownViews();
     });
   }
 
@@ -290,11 +490,37 @@ class ChapterPipelinePlugin extends Plugin {
     if (this.settings.activeColor === '#10b981') {
       this.settings.activeColor = '#3b82f6';
     }
+    if (this.settings.enableSound === undefined) {
+      this.settings.enableSound = true;
+    }
+    if (this.settings.soundVolume === undefined) {
+      this.settings.soundVolume = 50;
+    }
     await this.saveSettings();
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  scheduleUpdateAllMarkdownViews() {
+    this.updateAllMarkdownViews();
+
+    if (this.refreshFrame !== null) {
+      cancelAnimationFrame(this.refreshFrame);
+    }
+    this.refreshFrame = requestAnimationFrame(() => {
+      this.refreshFrame = null;
+      this.updateAllMarkdownViews();
+    });
+
+    if (this.refreshTimer !== null) {
+      clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+      this.updateAllMarkdownViews();
+    }, 180);
   }
 
   updateAllMarkdownViews() {
@@ -312,6 +538,11 @@ class ChapterPipelinePlugin extends Plugin {
     const container = view.contentEl;
     if (!container) return;
 
+    const renderVersion = (this.renderVersions.get(view) || 0) + 1;
+    this.renderVersions.set(view, renderVersion);
+
+    this.observeViewContainer(view, container);
+
     const existing = container.querySelector('.codex-stepper-container');
     if (existing) existing.remove();
 
@@ -323,10 +554,41 @@ class ChapterPipelinePlugin extends Plugin {
       this.observers.delete(container);
     }
 
+    if (this.scrollBindings.has(container)) {
+      const binding = this.scrollBindings.get(container);
+      if (binding?.scroller && binding?.handler) {
+        binding.scroller.removeEventListener('scroll', binding.handler);
+      }
+      this.scrollBindings.delete(container);
+    }
+
     const file = view.file;
     const content = await this.app.vault.cachedRead(file);
+    if (this.renderVersions.get(view) !== renderVersion) {
+      return;
+    }
+
     const fileCache = this.app.metadataCache.getFileCache(file);
-    const headings = fileCache ? fileCache.headings || [] : [];
+    let headings = fileCache ? fileCache.headings || [] : [];
+
+    // 若缓存尚未就绪，使用正则极速从正文提取标题作为保底，确保任何模式百分百加载
+    if (!headings || headings.length === 0) {
+      headings = [];
+      const lines = content ? content.split(/\r?\n/) : [];
+      for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+          headings.push({
+            heading: match[2].trim(),
+            level: match[1].length,
+            position: {
+              start: { line: i, col: 0, offset: 0 },
+              end: { line: i, col: lines[i].length, offset: 0 }
+            }
+          });
+        }
+      }
+    }
 
     const chapters = ChapterParser.parse(content, headings, this.settings);
     if (chapters.length === 0) return;
@@ -412,7 +674,7 @@ class ChapterPipelinePlugin extends Plugin {
         floatingTooltip.classList.remove('is-visible');
       });
 
-      // 点击横线：纯净置顶平滑跳转
+      // 点击横线：拟物微动音效 + 纯净置顶平滑跳转
       dashItem.addEventListener('click', (e) => {
         e.stopPropagation();
         isClickScrolling = true;
@@ -421,11 +683,17 @@ class ChapterPipelinePlugin extends Plugin {
         dashElements.forEach(d => d.classList.remove('active'));
         dashItem.classList.add('active');
 
-        this.jumpToHeading(view, chap.line);
+        // 触发清脆机械微动按键音
+        if (this.settings.enableSound !== false) {
+          const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+          this.soundEngine.playClick(vol);
+        }
+
+        this.jumpToHeading(view, chap);
 
         clickTimeout = setTimeout(() => {
           isClickScrolling = false;
-        }, 500);
+        }, 600);
       });
 
       dashElements.push(dashItem);
@@ -433,10 +701,11 @@ class ChapterPipelinePlugin extends Plugin {
 
     // 4. 基于真实行号与 120 FPS rAF 硬件加速节流
     let rAF = null;
+    let previousActiveIdx = -1;
     const updateActiveByRealLine = () => {
       if (isClickScrolling) return;
 
-      const currentLine = this.getCurrentEditorTopLine(view, container);
+      const currentLine = this.getCurrentEditorTopLine(view, container, chapters);
       
       let activeIdx = 0;
       for (let i = 0; i < chapters.length; i++) {
@@ -445,6 +714,15 @@ class ChapterPipelinePlugin extends Plugin {
         } else {
           break;
         }
+      }
+
+      // 滚动跨越新章节时触发机械转轮刻度轻音
+      if (activeIdx !== previousActiveIdx) {
+        if (previousActiveIdx !== -1 && this.settings.enableSound !== false) {
+          const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+          this.soundEngine.playScrollTick(vol);
+        }
+        previousActiveIdx = activeIdx;
       }
 
       dashElements.forEach((el, i) => {
@@ -466,33 +744,168 @@ class ChapterPipelinePlugin extends Plugin {
 
     updateActiveByRealLine();
 
-    const scroller = container.querySelector('.cm-scroller') || container.querySelector('.markdown-preview-view');
+    const scroller = this.getViewScroller(container, view);
     if (scroller) {
       scroller.addEventListener('scroll', throttledScroll, { passive: true });
+      this.scrollBindings.set(container, { scroller, handler: throttledScroll });
     }
   }
 
-  getCurrentEditorTopLine(view, container) {
+  getViewScroller(container, view = null) {
+    if (!container) return null;
+    const mode = view?.getMode ? view.getMode() : view?.currentMode?.type;
+    if (mode === 'preview') {
+      return container.querySelector('.markdown-preview-view');
+    }
+    return container.querySelector('.cm-scroller') || container.querySelector('.markdown-preview-view');
+  }
+
+  observeViewContainer(view, container) {
+    if (this.viewObservers.has(container) || typeof MutationObserver === 'undefined') return;
+
+    let refreshQueued = false;
+    const observer = new MutationObserver(() => {
+      if (refreshQueued || container.querySelector('.codex-stepper-container')) return;
+      if (!this.getViewScroller(container, view)) return;
+
+      refreshQueued = true;
+      requestAnimationFrame(() => {
+        refreshQueued = false;
+        if (!container.querySelector('.codex-stepper-container')) {
+          this.attachStepperToView(view);
+        }
+      });
+    });
+
+    observer.observe(container, { childList: true, subtree: true });
+    this.viewObservers.set(container, observer);
+  }
+
+  getReadingHeading(view, chap) {
+    if (!view || !chap) return null;
+    const scroller = view.contentEl?.querySelector('.markdown-preview-view');
+    if (!scroller) return null;
+
+    const renderedHeadings = Array.from(scroller.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+      .filter((el) => {
+        if (el.classList && el.classList.contains('inline-title')) return false;
+        if (typeof el.closest === 'function') {
+          return !el.closest('.internal-embed, .markdown-embed, .markdown-embed-content, .popover, .codex-floating-tooltip, .mod-header');
+        }
+        return true;
+      });
+
+    // 1. 优先：通过包含目标行号的 section 精确匹配
+    if (chap.line !== undefined) {
+      const section = scroller.querySelector(`.markdown-preview-section[data-line="${chap.line}"]`);
+      if (section) {
+        const sectionHeading = section.querySelector('h1, h2, h3, h4, h5, h6') || section;
+        return sectionHeading;
+      }
+
+      const byLine = renderedHeadings.find((heading) => {
+        const lineAttr = heading.getAttribute('data-line') || heading.getAttribute('data-heading-line') || (typeof heading.closest === 'function' ? heading.closest('[data-line]')?.getAttribute('data-line') : null);
+        return lineAttr !== null && parseInt(lineAttr, 10) === chap.line;
+      });
+      if (byLine) return byLine;
+    }
+
+    const targetTag = chap.level ? `H${chap.level}`.toUpperCase() : null;
+    const cleanNorm = normalizeHeadingText(chap.title);
+    const rawNorm = normalizeHeadingText(chap.rawHeading || chap.title);
+
+    // 2. 层级严格匹配 (H2/H3/...) + 归一化文本完全对齐
+    if (targetTag && (cleanNorm || rawNorm)) {
+      const matchExact = renderedHeadings.find((h) => {
+        const tag = (h.tagName || '').toUpperCase();
+        if (tag !== targetTag) return false;
+        const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
+        const textNorm = normalizeHeadingText(h.textContent);
+        return (dataNorm && (dataNorm === cleanNorm || dataNorm === rawNorm)) ||
+               (textNorm && (textNorm === cleanNorm || textNorm === rawNorm));
+      });
+      if (matchExact) return matchExact;
+    }
+
+    // 3. 层级匹配 (H2/H3/...) + 包含关系对齐
+    if (targetTag && cleanNorm) {
+      const matchPartial = renderedHeadings.find((h) => {
+        const tag = (h.tagName || '').toUpperCase();
+        if (tag !== targetTag) return false;
+        const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
+        const textNorm = normalizeHeadingText(h.textContent);
+        const matchData = Boolean(dataNorm) && (dataNorm.includes(cleanNorm) || cleanNorm.includes(dataNorm));
+        const matchText = Boolean(textNorm) && (textNorm.includes(cleanNorm) || cleanNorm.includes(textNorm));
+        return matchData || matchText;
+      });
+      if (matchPartial) return matchPartial;
+    }
+
+    // 4. 不限层级的归一化文本匹配
+    if (cleanNorm || rawNorm) {
+      const byText = renderedHeadings.find((h) => {
+        const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
+        const textNorm = normalizeHeadingText(h.textContent);
+        const matchData = Boolean(dataNorm) && (
+          dataNorm === cleanNorm ||
+          dataNorm === rawNorm ||
+          (Boolean(cleanNorm) && (dataNorm.includes(cleanNorm) || cleanNorm.includes(dataNorm)))
+        );
+        const matchText = Boolean(textNorm) && (
+          textNorm === cleanNorm ||
+          textNorm === rawNorm ||
+          (Boolean(cleanNorm) && (textNorm.includes(cleanNorm) || cleanNorm.includes(textNorm)))
+        );
+        return matchData || matchText;
+      });
+      if (byText) return byText;
+    }
+
+    // 5. 保底：headingIndex 匹配
+    if (Number.isInteger(chap.headingIndex) && renderedHeadings[chap.headingIndex]) {
+      return renderedHeadings[chap.headingIndex];
+    }
+
+    return null;
+  }
+
+  getCurrentEditorTopLine(view, container, chapters = []) {
     try {
-      const cm = view.editor?.cm;
-      if (cm && cm.scrollDOM) {
-        const topOffset = cm.scrollDOM.scrollTop + 50;
-        const lineBlock = cm.lineBlockAtHeight(topOffset);
-        if (lineBlock) {
-          return cm.state.doc.lineAt(lineBlock.from).number - 1;
+      const mode = view.getMode ? view.getMode() : (view.currentMode?.type || 'source');
+      if (mode !== 'preview') {
+        const cm = view.editor?.cm || view.editMode?.editor?.cm;
+        if (cm && cm.scrollDOM) {
+          const topOffset = cm.scrollDOM.scrollTop + 50;
+          const lineBlock = cm.lineBlockAtHeight(topOffset);
+          if (lineBlock) {
+            return cm.state.doc.lineAt(lineBlock.from).number - 1;
+          }
         }
       }
 
       const scroller = container.querySelector('.markdown-preview-view');
       if (scroller) {
-        const scrollerRect = scroller.getBoundingClientRect();
-        const headings = scroller.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        let closestLine = 0;
-        for (const h of Array.from(headings)) {
-          const rect = h.getBoundingClientRect();
-          if (rect.top - scrollerRect.top <= 120) {
-            const lineAttr = h.getAttribute('data-line') || h.getAttribute('data-heading-line');
-            if (lineAttr) closestLine = parseInt(lineAttr, 10);
+        const scrollerTop = scroller.getBoundingClientRect().top;
+        const activeBaseline = scrollerTop + 24;
+        let closestLine = chapters[0]?.line || 0;
+
+        for (const chap of chapters) {
+          const heading = this.getReadingHeading(view, chap);
+          if (heading) {
+            if (heading.getBoundingClientRect().top <= activeBaseline) {
+              closestLine = chap.line;
+            } else {
+              break;
+            }
+          } else {
+            const section = scroller.querySelector(`.markdown-preview-section[data-line="${chap.line}"]`);
+            if (section) {
+              if (section.getBoundingClientRect().top <= activeBaseline) {
+                closestLine = chap.line;
+              } else {
+                break;
+              }
+            }
           }
         }
         return closestLine;
@@ -503,54 +916,157 @@ class ChapterPipelinePlugin extends Plugin {
     return 0;
   }
 
-  jumpToHeading(view, line) {
-    if (view.editor) {
-      const cm = view.editor.cm;
-      if (cm && cm.scrollDOM) {
-        const doc = cm.state.doc;
-        const targetLineNum = Math.min(Math.max(1, line + 1), doc.lines);
-        const lineObj = doc.line(targetLineNum);
+  jumpToHeading(view, chap) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView) return;
 
-        view.editor.setCursor({ line: line, ch: 0 });
+    const line = (typeof chap === 'number') ? chap : chap.line;
+    if (line === undefined) return;
 
-        const lineBlock = cm.lineBlockAt(lineObj.from);
-        const targetTop = Math.max(0, lineBlock.top - 20);
-        cm.scrollDOM.scrollTo({
-          top: targetTop,
-          behavior: 'smooth'
-        });
+    const mode = targetView.getMode ? targetView.getMode() : (targetView.currentMode?.type || 'source');
+    if (mode === 'preview') {
+      const previewScroller = targetView.contentEl?.querySelector('.markdown-preview-view');
+      const previewMode = targetView.currentMode || targetView.previewMode;
 
-        setTimeout(() => {
-          try {
-            const coords = cm.coordsAtPos(lineObj.from);
-            if (coords) {
-              const editorRect = cm.scrollDOM.getBoundingClientRect();
-              const delta = coords.top - editorRect.top - 20;
-              if (Math.abs(delta) > 3) {
-                cm.scrollDOM.scrollBy({ top: delta, behavior: 'smooth' });
-              }
-            }
-          } catch (err) {}
-        }, 80);
-        return;
+      let targetHeading = typeof chap === 'object' ? this.getReadingHeading(targetView, chap) : null;
+
+      // 1. 如果当前可见 DOM 中没有找到目标标题（因长文档虚拟滚动/分段懒加载），使用 Obsidian 原生预览滚动引擎驱动
+      if (!targetHeading) {
+        if (previewMode && typeof previewMode.applyScroll === 'function') {
+          previewMode.applyScroll(line);
+        } else if (typeof targetView.setEphemeralState === 'function') {
+          targetView.setEphemeralState({ line });
+        }
       }
 
-      view.editor.scrollIntoView(
-        { from: { line: line, ch: 0 }, to: { line: line, ch: 0 } },
-        false
-      );
-      view.editor.setCursor({ line: line, ch: 0 });
-    } else if (view.leaf) {
-      view.leaf.openFile(view.file, {
-        eState: { line: line }
-      });
+      // 2. 执行平滑滚动 + 连续多帧物理像素高精校准（锁定 20px 顶部基线）
+      if (previewScroller) {
+        const topMargin = 20;
+
+        if (targetHeading) {
+          const scrollerRect = previewScroller.getBoundingClientRect();
+          const headingRect = targetHeading.getBoundingClientRect();
+          const targetTop = Math.max(
+            0,
+            previewScroller.scrollTop + headingRect.top - scrollerRect.top - topMargin
+          );
+          previewScroller.scrollTo({ top: targetTop, behavior: 'smooth' });
+        }
+
+        let frames = 0;
+        const calibratePreview = () => {
+          frames++;
+          if (!targetHeading && typeof chap === 'object') {
+            targetHeading = this.getReadingHeading(targetView, chap);
+          }
+
+          if (targetHeading) {
+            const freshScrollerRect = previewScroller.getBoundingClientRect();
+            const freshHeadingRect = targetHeading.getBoundingClientRect();
+            const delta = freshHeadingRect.top - freshScrollerRect.top - topMargin;
+            if (Math.abs(delta) > 1) {
+              previewScroller.scrollTop = Math.max(0, previewScroller.scrollTop + delta);
+            }
+          }
+          if (frames < 16) {
+            requestAnimationFrame(calibratePreview);
+          }
+        };
+        requestAnimationFrame(calibratePreview);
+        return;
+      }
+    }
+
+    const editor = targetView.editor;
+    const cm = editor?.cm || editor?.editor?.cm || targetView.editMode?.editor?.cm || targetView.editMode?.cm;
+    const scroller = targetView.contentEl?.querySelector('.cm-scroller');
+
+    if (cm && cm.state && cm.state.doc) {
+      const doc = cm.state.doc;
+      const targetLineNum = Math.min(Math.max(1, line + 1), doc.lines);
+      const lineObj = doc.line(targetLineNum);
+      const targetPos = lineObj.from;
+
+      if (editor?.setCursor) {
+        editor.setCursor({ line, ch: 0 });
+      }
+
+      // 1. 优先使用 CodeMirror 6 原生置顶 Effect（y: 'start'）驱动核心引擎
+      try {
+        const EditorViewClass = cm.constructor;
+        if (EditorViewClass && typeof EditorViewClass.scrollIntoView === 'function') {
+          cm.dispatch({
+            effects: EditorViewClass.scrollIntoView(targetPos, { y: 'start', yMargin: 20 })
+          });
+        } else {
+          const block = cm.lineBlockAt(targetPos);
+          if (scroller && block) {
+            scroller.scrollTop = Math.max(0, block.top - 20);
+          }
+        }
+      } catch (e) {
+        if (editor) {
+          editor.scrollIntoView({ from: { line: line, ch: 0 }, to: { line: line, ch: 0 } }, false);
+        }
+      }
+
+      // 2. 毫秒级多帧高精物理像素校准（消除 LaTeX 公式/卡片渲染重排导致的微小位移）
+      if (scroller) {
+        let frames = 0;
+        const calibrate = () => {
+          frames++;
+          const scrollerRect = scroller.getBoundingClientRect();
+          const coords = cm.coordsAtPos ? cm.coordsAtPos(targetPos) : null;
+
+          if (coords) {
+            const delta = coords.top - scrollerRect.top - 20;
+            if (Math.abs(delta) > 1) {
+              scroller.scrollTop += delta;
+            }
+          } else {
+            try {
+              const freshBlock = cm.lineBlockAt(targetPos);
+              if (freshBlock) {
+                const delta = freshBlock.top - scroller.scrollTop - 20;
+                if (Math.abs(delta) > 1) {
+                  scroller.scrollTop = Math.max(0, freshBlock.top - 20);
+                }
+              }
+            } catch (err) {
+              // ignore
+            }
+          }
+
+          if (frames < 12) {
+            requestAnimationFrame(calibrate);
+          }
+        };
+        requestAnimationFrame(calibrate);
+      }
+      return;
+    }
+
+    // 降级保底
+    if (editor) {
+      editor.scrollIntoView({ from: { line: line, ch: 0 }, to: { line: line, ch: 0 } }, false);
     }
   }
 
   onunload() {
     console.log('Unloading Charter Pipeline Pro');
+    if (this.refreshFrame !== null) cancelAnimationFrame(this.refreshFrame);
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
     this.observers.forEach(obs => obs.disconnect());
     this.observers.clear();
+    this.viewObservers.forEach(obs => obs.disconnect());
+    this.viewObservers.clear();
+    this.renderVersions.clear();
+    this.scrollBindings.forEach(({ scroller, handler }) => {
+      scroller.removeEventListener('scroll', handler);
+    });
+    this.scrollBindings.clear();
     document.querySelectorAll('.codex-stepper-container').forEach(el => el.remove());
     document.querySelectorAll('.codex-floating-tooltip').forEach(el => el.remove());
   }
