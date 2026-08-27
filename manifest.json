@@ -1,7 +1,7 @@
 {
   "id": "chapter-pipeline",
   "name": "Charter Pipeline",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "0.15.0",
   "description": "Minimalist Linear-style floating horizontal dash stepper with KaTeX formula preview and pinned top navigation.",
   "author": "择梦舟",

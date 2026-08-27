@@ -60,7 +60,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
   - Automatically fades out when pane width is narrow (e.g. split-screen with PDF notes) so it never clashes with your text.
 - ⚙️ **Bilingual Settings Panel**:
   - English by default with automatic Chinese localization support.
-  - Toggle 3-line excerpt preview, max heading levels (default H1~H2), ignore first H1 note title, custom active colors, and tactile sound volume.
+  - Toggle 3-line excerpt preview, max heading levels (default `H1 ~ H2`), ignore first H1 note title, custom active colors, and tactile sound volume.
 
 ---
 
@@ -88,7 +88,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 | **Active Indicator Color** | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
 | **Narrow View Auto-Hide Threshold (px)** | Automatically hide the stepper when note pane width is below this threshold (px) to prevent overlapping text. | `460px` |
 | **Enable Tactile Micro-Switch Sound** | Play subtle mechanical micro-switch sounds on clicking chapters and scrolling across headings. | `Enabled (true)` |
-| **Sound Volume (%)** | Adjust the volume of interactive tactile sound effects (0 ~ 100%). | `50%` |
+| **Sound Volume (%)** | Adjust the volume of interactive tactile sound effects (0% - 100%). | `50%` |
 
 ---
 

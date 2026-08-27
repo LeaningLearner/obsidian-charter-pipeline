@@ -19,9 +19,9 @@
 
 /* 窄屏/分屏自适应隐藏 */
 .codex-stepper-container.is-narrow {
-  display: none !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  display: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 散落悬浮轨道 */
@@ -71,17 +71,14 @@
 .codex-dash-item.level-6 .codex-dash-bar { width: 6px; }
 
 /* 彻底清除 Obsidian 默认在跳转时附加的行高亮 / 闪烁效果 */
-.is-flashing,
-.flashing,
-.markdown-preview-view .is-flashing,
-.markdown-rendered .is-flashing,
-.markdown-preview-section.is-flashing,
-.is-highlighted,
-.cm-active-line.is-flashing {
-  animation: none !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
-  outline: none !important;
+.workspace-leaf .markdown-preview-view .is-flashing,
+.workspace-leaf .markdown-rendered .is-flashing,
+.workspace-leaf .markdown-preview-section.is-flashing,
+.workspace-leaf .cm-active-line.is-flashing {
+  animation: none;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
 }
 
 /* 鼠标悬浮态：磁吸弹簧果冻延展 */
@@ -99,13 +96,13 @@
 
 /* 激活态（极简统一线条风格） */
 .codex-dash-item.active .codex-dash-bar {
-  box-shadow: none !important;
-  background-color: var(--text-faint, rgba(125, 125, 125, 0.3)) !important;
+  box-shadow: none;
+  background-color: var(--text-faint, rgba(125, 125, 125, 0.3));
 }
 
 /* ---------------- Codex 同款独立悬浮气泡卡片 (固定屏幕坐标、垂直中心精准对齐横线) ---------------- */
 .codex-floating-tooltip {
-  position: fixed !important;
+  position: fixed;
   background: var(--background-primary, #ffffff);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -116,7 +113,7 @@
   width: 290px;
   max-width: 330px;
   box-sizing: border-box;
-  z-index: 99999 !important;
+  z-index: 99999;
   pointer-events: none;
   user-select: none;
   opacity: 0;
@@ -183,11 +180,11 @@
 }
 
 /* 彻底清理气泡内部可能混入的 Callout 和块引用样式，保持纯净文本 */
-.codex-tooltip-excerpt .callout,
-.codex-tooltip-excerpt blockquote {
-  margin: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.codex-floating-tooltip .codex-tooltip-excerpt .callout,
+.codex-floating-tooltip .codex-tooltip-excerpt blockquote {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
