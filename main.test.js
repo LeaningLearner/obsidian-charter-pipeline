@@ -430,19 +430,26 @@ test('Reading View accurately matches H2 and H3 headings even with inline titles
   assert.equal(matchedH3, h3Element);
 });
 
-test('Reading View navigation calls previewMode.applyScroll when heading is not yet mounted in DOM', () => {
+test('Reading View navigation calls previewMode.applyScroll and setEphemeralState with subpath', () => {
   const { plugin, view } = createReadingHarness();
   let appliedScrollLine = null;
+  let ephemeralState = null;
   view.currentMode = {
     applyScroll: (line) => { appliedScrollLine = line; }
+  };
+  view.setEphemeralState = (state) => {
+    ephemeralState = state;
   };
 
   plugin.jumpToHeading(view, {
     level: 2,
-    title: 'Off-screen Heading',
-    rawHeading: 'Off-screen Heading',
-    line: 200
+    title: '2.4.1 脱帽法',
+    rawHeading: '2.4.1 脱帽法',
+    line: 21
   });
 
-  assert.equal(appliedScrollLine, 200);
+  assert.equal(appliedScrollLine, 21);
+  assert.equal(ephemeralState?.subpath, '#2.4.1 脱帽法');
+  assert.equal(ephemeralState?.line, 21);
 });
+

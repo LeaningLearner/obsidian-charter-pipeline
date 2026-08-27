@@ -795,12 +795,30 @@ class ChapterPipelinePlugin extends Plugin {
         return true;
       });
 
+    const targetTag = chap.level ? `H${chap.level}`.toUpperCase() : null;
+    const cleanNorm = normalizeHeadingText(chap.title);
+    const rawNorm = normalizeHeadingText(chap.rawHeading || chap.title);
+
     // 1. 优先：通过包含目标行号的 section 精确匹配
     if (chap.line !== undefined) {
       const section = scroller.querySelector(`.markdown-preview-section[data-line="${chap.line}"]`);
       if (section) {
-        const sectionHeading = section.querySelector('h1, h2, h3, h4, h5, h6') || section;
-        return sectionHeading;
+        const headingsInSection = Array.from(section.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+          .filter(h => !h.classList.contains('inline-title') && !h.closest('.internal-embed, .markdown-embed'));
+        if (headingsInSection.length > 0) {
+          const exact = headingsInSection.find(h => {
+            const tagMatch = !targetTag || h.tagName.toUpperCase() === targetTag;
+            const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
+            const textNorm = normalizeHeadingText(h.textContent);
+            return tagMatch && ((dataNorm && (dataNorm === cleanNorm || dataNorm === rawNorm)) ||
+                                (textNorm && (textNorm === cleanNorm || textNorm === rawNorm)));
+          });
+          if (exact) return exact;
+          const tagOnly = targetTag ? headingsInSection.find(h => h.tagName.toUpperCase() === targetTag) : null;
+          if (tagOnly) return tagOnly;
+          return headingsInSection[0];
+        }
+        return section;
       }
 
       const byLine = renderedHeadings.find((heading) => {
@@ -809,10 +827,6 @@ class ChapterPipelinePlugin extends Plugin {
       });
       if (byLine) return byLine;
     }
-
-    const targetTag = chap.level ? `H${chap.level}`.toUpperCase() : null;
-    const cleanNorm = normalizeHeadingText(chap.title);
-    const rawNorm = normalizeHeadingText(chap.rawHeading || chap.title);
 
     // 2. 层级严格匹配 (H2/H3/...) + 归一化文本完全对齐
     if (targetTag && (cleanNorm || rawNorm)) {
@@ -827,7 +841,7 @@ class ChapterPipelinePlugin extends Plugin {
       if (matchExact) return matchExact;
     }
 
-    // 3. 层级匹配 (H2/H3/...) + 包含关系对齐
+    // 3. 层级严格匹配 + 子串包含对齐
     if (targetTag && cleanNorm) {
       const matchPartial = renderedHeadings.find((h) => {
         const tag = (h.tagName || '').toUpperCase();
@@ -841,27 +855,29 @@ class ChapterPipelinePlugin extends Plugin {
       if (matchPartial) return matchPartial;
     }
 
-    // 4. 不限层级的归一化文本匹配
+    // 4. 不限层级的归一化文本完全匹配
     if (cleanNorm || rawNorm) {
-      const byText = renderedHeadings.find((h) => {
+      const byExactText = renderedHeadings.find((h) => {
         const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
         const textNorm = normalizeHeadingText(h.textContent);
-        const matchData = Boolean(dataNorm) && (
-          dataNorm === cleanNorm ||
-          dataNorm === rawNorm ||
-          (Boolean(cleanNorm) && (dataNorm.includes(cleanNorm) || cleanNorm.includes(dataNorm)))
-        );
-        const matchText = Boolean(textNorm) && (
-          textNorm === cleanNorm ||
-          textNorm === rawNorm ||
-          (Boolean(cleanNorm) && (textNorm.includes(cleanNorm) || cleanNorm.includes(textNorm)))
-        );
-        return matchData || matchText;
+        return (dataNorm && (dataNorm === cleanNorm || dataNorm === rawNorm)) ||
+               (textNorm && (textNorm === cleanNorm || textNorm === rawNorm));
       });
-      if (byText) return byText;
+      if (byExactText) return byExactText;
     }
 
-    // 5. 保底：headingIndex 匹配
+    // 5. 不限层级的子串包含匹配
+    if (cleanNorm) {
+      const byPartialText = renderedHeadings.find((h) => {
+        const dataNorm = normalizeHeadingText(h.getAttribute('data-heading'));
+        const textNorm = normalizeHeadingText(h.textContent);
+        return (Boolean(dataNorm) && (dataNorm.includes(cleanNorm) || cleanNorm.includes(dataNorm))) ||
+               (Boolean(textNorm) && (textNorm.includes(cleanNorm) || cleanNorm.includes(textNorm)));
+      });
+      if (byPartialText) return byPartialText;
+    }
+
+    // 6. 保底：headingIndex 匹配
     if (Number.isInteger(chap.headingIndex) && renderedHeadings[chap.headingIndex]) {
       return renderedHeadings[chap.headingIndex];
     }
@@ -878,17 +894,18 @@ class ChapterPipelinePlugin extends Plugin {
           const topOffset = cm.scrollDOM.scrollTop + 50;
           const lineBlock = cm.lineBlockAtHeight(topOffset);
           if (lineBlock) {
-            return cm.state.doc.lineAt(lineBlock.from).number - 1;
+            const doc = cm.state.doc;
+            const line = doc.lineAt(lineBlock.from);
+            return line.number - 1;
           }
         }
-      }
+      } else {
+        const scroller = view.contentEl?.querySelector('.markdown-preview-view');
+        if (!scroller) return 0;
+        const scrollerRect = scroller.getBoundingClientRect();
+        const activeBaseline = scrollerRect.top + 70;
 
-      const scroller = container.querySelector('.markdown-preview-view');
-      if (scroller) {
-        const scrollerTop = scroller.getBoundingClientRect().top;
-        const activeBaseline = scrollerTop + 24;
-        let closestLine = chapters[0]?.line || 0;
-
+        let closestLine = 0;
         for (const chap of chapters) {
           const heading = this.getReadingHeading(view, chap);
           if (heading) {
@@ -925,25 +942,30 @@ class ChapterPipelinePlugin extends Plugin {
     const line = (typeof chap === 'number') ? chap : chap.line;
     if (line === undefined) return;
 
+    const headingText = (typeof chap === 'object' && chap) ? (chap.rawHeading || chap.title) : '';
+    const subpath = headingText ? `#${headingText}` : '';
+
+    // 0. 调用 Obsidian 原生状态机制（自动解除折叠、唤醒虚拟DOM、跨模式对齐）
+    try {
+      if (typeof targetView.setEphemeralState === 'function') {
+        targetView.setEphemeralState(subpath ? { subpath, line, focus: true } : { line, focus: true });
+      }
+    } catch (e) {
+      // ignore
+    }
+
     const mode = targetView.getMode ? targetView.getMode() : (targetView.currentMode?.type || 'source');
     if (mode === 'preview') {
       const previewScroller = targetView.contentEl?.querySelector('.markdown-preview-view');
       const previewMode = targetView.currentMode || targetView.previewMode;
 
-      let targetHeading = typeof chap === 'object' ? this.getReadingHeading(targetView, chap) : null;
-
-      // 1. 如果当前可见 DOM 中没有找到目标标题（因长文档虚拟滚动/分段懒加载），使用 Obsidian 原生预览滚动引擎驱动
-      if (!targetHeading) {
-        if (previewMode && typeof previewMode.applyScroll === 'function') {
-          previewMode.applyScroll(line);
-        } else if (typeof targetView.setEphemeralState === 'function') {
-          targetView.setEphemeralState({ line });
-        }
+      if (previewMode && typeof previewMode.applyScroll === 'function') {
+        previewMode.applyScroll(line);
       }
 
-      // 2. 执行平滑滚动 + 连续多帧物理像素高精校准（锁定 20px 顶部基线）
       if (previewScroller) {
         const topMargin = 20;
+        let targetHeading = typeof chap === 'object' ? this.getReadingHeading(targetView, chap) : null;
 
         if (targetHeading) {
           const scrollerRect = previewScroller.getBoundingClientRect();
@@ -956,10 +978,20 @@ class ChapterPipelinePlugin extends Plugin {
         }
 
         let frames = 0;
+        const maxFrames = 24;
         const calibratePreview = () => {
           frames++;
           if (!targetHeading && typeof chap === 'object') {
             targetHeading = this.getReadingHeading(targetView, chap);
+            if (targetHeading) {
+              const scrollerRect = previewScroller.getBoundingClientRect();
+              const headingRect = targetHeading.getBoundingClientRect();
+              const targetTop = Math.max(
+                0,
+                previewScroller.scrollTop + headingRect.top - scrollerRect.top - topMargin
+              );
+              previewScroller.scrollTo({ top: targetTop, behavior: 'smooth' });
+            }
           }
 
           if (targetHeading) {
@@ -970,7 +1002,7 @@ class ChapterPipelinePlugin extends Plugin {
               previewScroller.scrollTop = Math.max(0, previewScroller.scrollTop + delta);
             }
           }
-          if (frames < 16) {
+          if (frames < maxFrames) {
             requestAnimationFrame(calibratePreview);
           }
         };
@@ -983,17 +1015,20 @@ class ChapterPipelinePlugin extends Plugin {
     const cm = editor?.cm || editor?.editor?.cm || targetView.editMode?.editor?.cm || targetView.editMode?.cm;
     const scroller = targetView.contentEl?.querySelector('.cm-scroller');
 
+    if (editor?.setCursor) {
+      editor.setCursor({ line, ch: 0 });
+    }
+
+    if (editor?.scrollIntoView) {
+      editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, false);
+    }
+
     if (cm && cm.state && cm.state.doc) {
       const doc = cm.state.doc;
       const targetLineNum = Math.min(Math.max(1, line + 1), doc.lines);
       const lineObj = doc.line(targetLineNum);
       const targetPos = lineObj.from;
 
-      if (editor?.setCursor) {
-        editor.setCursor({ line, ch: 0 });
-      }
-
-      // 1. 优先使用 CodeMirror 6 原生置顶 Effect（y: 'start'）驱动核心引擎
       try {
         const EditorViewClass = cm.constructor;
         if (EditorViewClass && typeof EditorViewClass.scrollIntoView === 'function') {
