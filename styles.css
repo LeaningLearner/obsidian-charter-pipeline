@@ -71,31 +71,50 @@
 .codex-dash-item.level-6 .codex-dash-bar { width: 6px; }
 
 /* 彻底清除 Obsidian 默认在跳转与阅读时附加的正文文字/行/段落背景高亮及闪烁效果（保持正文纯净，不产生多余高亮） */
-.workspace-leaf .markdown-preview-view .is-flashing,
-.workspace-leaf .markdown-preview-view .flashing,
-.workspace-leaf .markdown-rendered .is-flashing,
-.workspace-leaf .markdown-rendered .flashing,
-.workspace-leaf .markdown-preview-section.is-flashing,
-.workspace-leaf .markdown-preview-section.flashing,
-.workspace-leaf .markdown-rendered h1.is-flashing,
-.workspace-leaf .markdown-rendered h2.is-flashing,
-.workspace-leaf .markdown-rendered h3.is-flashing,
-.workspace-leaf .markdown-rendered h4.is-flashing,
-.workspace-leaf .markdown-rendered h5.is-flashing,
-.workspace-leaf .markdown-rendered h6.is-flashing,
-.workspace-leaf .markdown-rendered h1.is-highlighted,
-.workspace-leaf .markdown-rendered h2.is-highlighted,
-.workspace-leaf .markdown-rendered h3.is-highlighted,
-.workspace-leaf .markdown-rendered h4.is-highlighted,
-.workspace-leaf .markdown-rendered h5.is-highlighted,
-.workspace-leaf .markdown-rendered h6.is-highlighted,
-.workspace-leaf .cm-active-line.is-flashing,
-.workspace-leaf .cm-line.is-flashing,
-.workspace-leaf .is-flashing,
-.workspace-leaf .flashing,
-.workspace-leaf .is-highlighted,
-.workspace-leaf .highlighted {
+.workspace-leaf .markdown-reading-view,
+.workspace-leaf .markdown-preview-view,
+.workspace-leaf .markdown-source-view,
+.workspace-leaf .cm-editor,
+.workspace-leaf .markdown-rendered {
+  --text-highlight-bg: transparent;
+  --text-highlight-bg-active: transparent;
+}
+
+body .workspace-leaf .markdown-preview-section.is-flashing,
+body .workspace-leaf .markdown-preview-section.is-highlighted,
+body .workspace-leaf .markdown-preview-section.flashing,
+body .workspace-leaf .markdown-preview-section.highlighted,
+body .workspace-leaf .markdown-preview-section.mod-highlighted,
+body .workspace-leaf .markdown-rendered .is-flashing,
+body .workspace-leaf .markdown-rendered .is-highlighted,
+body .workspace-leaf .markdown-rendered .flashing,
+body .workspace-leaf .markdown-rendered .highlighted,
+body .workspace-leaf .markdown-rendered .mod-highlighted,
+body .workspace-leaf .markdown-rendered div.is-flashing,
+body .workspace-leaf .markdown-rendered div.is-highlighted,
+body .workspace-leaf .markdown-rendered p.is-flashing,
+body .workspace-leaf .markdown-rendered p.is-highlighted,
+body .workspace-leaf .markdown-rendered h1.is-flashing,
+body .workspace-leaf .markdown-rendered h2.is-flashing,
+body .workspace-leaf .markdown-rendered h3.is-flashing,
+body .workspace-leaf .markdown-rendered h4.is-flashing,
+body .workspace-leaf .markdown-rendered h5.is-flashing,
+body .workspace-leaf .markdown-rendered h6.is-flashing,
+body .workspace-leaf .markdown-rendered h1.is-highlighted,
+body .workspace-leaf .markdown-rendered h2.is-highlighted,
+body .workspace-leaf .markdown-rendered h3.is-highlighted,
+body .workspace-leaf .markdown-rendered h4.is-highlighted,
+body .workspace-leaf .markdown-rendered h5.is-highlighted,
+body .workspace-leaf .markdown-rendered h6.is-highlighted,
+body .workspace-leaf .cm-active-line.is-flashing,
+body .workspace-leaf .cm-line.is-flashing,
+body .workspace-leaf .is-flashing,
+body .workspace-leaf .flashing,
+body .workspace-leaf .is-highlighted,
+body .workspace-leaf .highlighted,
+body .workspace-leaf .mod-highlighted {
   animation: none;
+  -webkit-animation: none;
   background: transparent;
   background-color: transparent;
   box-shadow: none;

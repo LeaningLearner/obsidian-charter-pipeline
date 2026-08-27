@@ -760,11 +760,21 @@ class ChapterPipelinePlugin extends Plugin {
     return container.querySelector('.cm-scroller') || container.querySelector('.markdown-preview-view');
   }
 
+  clearFlashHighlights(container) {
+    if (!container || typeof container.querySelectorAll !== 'function') return;
+    const flashEls = container.querySelectorAll('.is-flashing, .flashing, .is-highlighted, .highlighted, .mod-highlighted');
+    for (let i = 0; i < flashEls.length; i++) {
+      const el = flashEls[i];
+      el.classList.remove('is-flashing', 'flashing', 'is-highlighted', 'highlighted', 'mod-highlighted');
+    }
+  }
+
   observeViewContainer(view, container) {
     if (this.viewObservers.has(container) || typeof MutationObserver === 'undefined') return;
 
     let refreshQueued = false;
     const observer = new MutationObserver(() => {
+      this.clearFlashHighlights(container);
       if (refreshQueued || container.querySelector('.codex-stepper-container')) return;
       if (!this.getViewScroller(container, view)) return;
 
@@ -777,7 +787,7 @@ class ChapterPipelinePlugin extends Plugin {
       });
     });
 
-    observer.observe(container, { childList: true, subtree: true });
+    observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     this.viewObservers.set(container, observer);
   }
 
@@ -950,6 +960,7 @@ class ChapterPipelinePlugin extends Plugin {
       if (typeof targetView.setEphemeralState === 'function') {
         targetView.setEphemeralState(subpath ? { subpath, line, focus: false } : { line, focus: false });
       }
+      this.clearFlashHighlights(targetView.contentEl);
     } catch (e) {
       // ignore
     }
