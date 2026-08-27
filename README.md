@@ -86,7 +86,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 | **Ignore First H1 (# Note Title)** | When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections. | `Disabled (false)` |
 | **Max Heading Level** | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `H1 ~ H2 (Default)` |
 | **Active Indicator Color** | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
-| **Narrow View Auto-Hide Threshold (px)** | Automatically hide the stepper when note pane width is below this threshold (px) to prevent overlapping text. | `460px` |
+| **Narrow View Auto-Hide Threshold (px)** | Automatically hide the stepper when note pane width is below this threshold (px) to prevent overlapping text. | `600px` |
 | **Enable Tactile Micro-Switch Sound** | Play subtle mechanical micro-switch sounds on clicking chapters and scrolling across headings. | `Enabled (true)` |
 | **Sound Volume (%)** | Adjust the volume of interactive tactile sound effects (0% - 100%). | `50%` |
 
@@ -159,11 +159,11 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 | :--- | :--- | :--- |
 | **开启正文 3 行摘要预览** | 在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。 | `开启 (true)` |
 | **忽略文档首个一级大标题** | 开启后，文章最开头的 `# 篇名` 不会生成横线，仅展示正文小节。 | `关闭 (false)` |
-| **最大展示标题层级** | 过滤更深层级的子小节（如选择 H1~H2 则仅展示大纲，过滤 H3~H6）。 | `仅 H1 ~ H2 (默认)` |
+| **最大展示标题层级** | 过滤更深层级的子小节（如选择 `H1 ~ H2` 则仅展示大纲，过滤 `H3 ~ H6`）。 | `仅 H1 ~ H2 (默认)` |
 | **激活高亮横线颜色** | 自定义当前阅读章节的横线加亮颜色（天青蓝、紫罗兰、琥珀、樱花粉、主题色）。 | `天青蓝 (#3b82f6)` |
-| **分屏/窄屏自动隐藏宽度阈值** | 笔记窗口宽度小于该像素时自动隐藏横线流以防止遮挡。 | `460px` |
+| **分屏/窄屏自动隐藏宽度阈值** | 笔记窗口宽度小于该像素时自动隐藏横线流以防止遮挡。 | `600px` |
 | **开启微动开关机械音效** | 在点击章节与滚动经过标题时，播放精致的机械微动开关清脆音效。 | `开启 (true)` |
-| **交互音量大小 (%)** | 自定义交互音效的播放音量（0 ~ 100%）。 | `50%` |
+| **交互音量大小 (%)** | 自定义交互音效的播放音量（0% - 100%）。 | `50%` |
 
 ---
 

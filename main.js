@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS = {
   ignoreFirstH1: false,
   showExcerpt: true,
   activeColor: '#3b82f6',
-  narrowThreshold: 460,
+  narrowThreshold: 600,
   enableSound: true,
   soundVolume: 50
 };
@@ -612,7 +612,7 @@ class ChapterPipelinePlugin extends Plugin {
 
     // 3. 页面过窄自适应隐藏检测
     const checkWidth = (width) => {
-      const threshold = this.settings.narrowThreshold || 460;
+      const threshold = this.settings.narrowThreshold || 600;
       if (width < threshold) {
         stepperContainer.classList.add('is-narrow');
         floatingTooltip.classList.remove('is-visible');

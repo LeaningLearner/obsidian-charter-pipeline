@@ -237,7 +237,7 @@ function createReadingHarness() {
     ignoreFirstH1: false,
     showExcerpt: true,
     activeColor: '#3b82f6',
-    narrowThreshold: 460,
+    narrowThreshold: 600,
     enableSound: false,
   };
 
