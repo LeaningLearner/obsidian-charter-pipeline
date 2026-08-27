@@ -14,7 +14,7 @@
 
 <br/>
 
-[![GitHub Release](https://img.shields.io/github/v/release/LeaningLearner/obsidian-charter-pipeline?style=flat-square&color=3b82f6&label=Release)](https://github.com/LeaningLearner/obsidian-charter-pipeline/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/LeaningLearner/obsidian-charter-pipeline?style=flat-square&color=3b82f6&label=Release&sort=semver)](https://github.com/LeaningLearner/obsidian-charter-pipeline/releases)
 [![Obsidian MinApp](https://img.shields.io/badge/Obsidian-%E2%89%A5%200.15.0-7c3aed?style=flat-square&logo=obsidian)](https://obsidian.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981?style=flat-square)](LICENSE)
 [![Author](https://img.shields.io/badge/Author-%E6%8B%A9%E6%A2%A6%E8%88%9F-blue?style=flat-square)](https://github.com/LeaningLearner)
@@ -40,7 +40,7 @@
 
 **Charter Pipeline** brings the sleek, ultra-minimalist timeline navigation of **Linear** directly into Obsidian. 
 
-Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, and **two-pass pinned-top navigation**, navigating complex math and study notes has never been more effortless.
+Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, **tactile micro-switch feedback**, and **rock-solid pinned-top navigation** across both Editing and Reading views, navigating complex math and study notes has never been more effortless.
 
 ---
 
@@ -49,21 +49,25 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 - 🪐 **Minimalist Linear-Style Floating Dashes**:
   - Pure floating horizontal lines on your note margin with zero container envelope background.
   - Distinct hierarchical dash lengths for headings: `H1` (16px), `H2` (12px), `H3` (9px), `H4~H6` (6px).
+  - Magnetic jelly spring physics animations on hover and click.
 - 💬 **KaTeX Hover Tooltip & 3-Line Excerpt**:
   - Instant floating card centered pixel-perfect on the hovered dash line.
   - Bold wrapped chapter title + unbolded 3-line excerpt from section content.
   - Full native **LaTeX / KaTeX formula rendering** (`$f(x)$`, `$(uv)^{(n)}$`, etc.).
   - Automatic `...` ellipsis truncation for long text.
-- 📌 **Pinned-Top Navigation (Rock-Solid Alignment)**:
-  - Two-pass virtual coordinate calculation ensures clicking any heading lands it **consistently and stably at the very top of the viewport** (with 20px comfortable breathing space).
+- 📌 **Pinned-Top Navigation (Editing & Reading Views)**:
+  - Supports both **Live Preview / Source Editing View** and **Reading View**.
+  - Intelligent multi-frame calibration and Obsidian native lazy-load virtualization fallback guarantee that clicking any heading lands it **consistently and stably at the very top of the viewport** (with 20px comfortable breathing space).
+- 🔊 **Tactile Micro-Switch Sound Effects**:
+  - Built-in lightweight Web Audio synthesizer generates crisp mechanical mouse micro-switch click and tick sounds without external audio files.
 - 🚀 **120 FPS Hardware-Accelerated Scroll Tracking**:
-  - Uses `requestAnimationFrame` with CodeMirror 6 active line detection.
+  - Uses `requestAnimationFrame` with CodeMirror 6 active line detection and Reading View visible scroll tracking.
   - Zero frame drops and zero CPU overhead even on 10,000-line math notes.
 - 📱 **Split-Screen & Narrow View Auto-Hide**:
   - Automatically fades out when pane width is narrow (e.g. split-screen with PDF notes) so it never clashes with your text.
 - ⚙️ **Bilingual Settings Panel**:
   - English by default with automatic Chinese localization support.
-  - Toggle 3-line excerpt preview, heading level filters (H1~H3 or H1~H6), ignore first H1 note title, custom active highlight colors (Azure Blue, Violet, Amber, Sakura Pink, Theme Accent).
+  - Toggle 3-line excerpt preview, max heading levels (default H1~H2), ignore first H1 note title, custom active colors, and tactile sound volume.
 
 ---
 
@@ -87,9 +91,11 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 | :--- | :--- | :--- |
 | **Show 3-Line Excerpt Preview** | Display a 3-line excerpt with KaTeX formula rendering below the title in the hover popover card. When disabled, only the clean title is shown. | `Enabled (true)` |
 | **Ignore First H1 (# Note Title)** | When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections. | `Disabled (false)` |
-| **Max Heading Level** | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `All H1 ~ H6` |
+| **Max Heading Level** | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `H1 ~ H2 (Default)` |
 | **Active Indicator Color** | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
 | **Narrow View Auto-Hide Threshold (px)** | Automatically hide the stepper when note pane width is below this threshold (px) to prevent overlapping text. | `460px` |
+| **Enable Tactile Micro-Switch Sound** | Play subtle mechanical micro-switch sounds on clicking chapters and scrolling across headings. | `Enabled (true)` |
+| **Sound Volume (%)** | Adjust the volume of interactive tactile sound effects (0 ~ 100%). | `50%` |
 
 ---
 
@@ -110,7 +116,7 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 **Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了 **Linear 的极简散落横线步进流** 美学。
 
-区别于传统占用大量屏幕空间的臃肿侧边栏目录或信息杂乱的代码小地图，Charter Pipeline 在笔记左侧边缘渲染一列**纯净散落的悬浮横线条**。通过精巧的长短区分（H1~H6）、**支持 KaTeX 数学公式渲染的 3 行气泡卡片**、以及**像素级绝对置顶平滑跳转**，让长文浏览与章节检索变得优雅而极速。
+区别于传统占用大量屏幕空间的臃肿侧边栏目录或信息杂乱的代码小地图，Charter Pipeline 在笔记左侧边缘渲染一列**纯净散落的悬浮横线条**。通过精巧的长短区分（H1~H6）、**支持 KaTeX 数学公式渲染的 3 行气泡卡片**、**清脆微动开关物理音效**、以及**编辑/阅读双模式像素级绝对置顶平滑跳转**，让长文浏览与章节检索变得优雅而极速。
 
 ---
 
@@ -118,22 +124,25 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 
 - 🪐 **Linear 级极简散落横线流**：
   - 纯粹自由散落悬浮在正文左侧，无厚重的外壳背景，还原纯粹原生质感；
-  - 严格按标题层级长短区分：`H1`（16px）、`H2`（12px）、`H3`（9px）、`H4~H6`（6px）。
+  - 严格按标题层级长短区分：`H1`（16px）、`H2`（12px）、`H3`（9px）、`H4~H6`（6px）；
+  - 带有弹性果冻磁吸过渡动效，极具交互质感。
 - 💬 **3 行 KaTeX 公式气泡与几何中心对齐**：
   - 悬浮横线即刻浮现独立气泡，**垂直正中心 100% 精准对齐短横线**；
   - 顶部为加粗且自动换行的章节名，下方为**浅色未加粗的 3 行正文摘要**；
   - 完整支持 **LaTeX / KaTeX 数学公式**（如 `$(uv)^{(n)}$`、$\lim$ 等）精美渲染，超长自动以 `...` 截断。
-- 📌 **双阶段像素级绝对置顶跳转**：
-  - 彻底攻克了虚拟滚动高度预估偏差导致的跳动问题；
-  - 无论点击第 1 章还是第 30 章，**目标章节永远绝对稳定停靠在编辑器顶部（留出 20px 舒适间距）**。
+- 📌 **双模式像素级绝对置顶跳转（编辑模式 + 阅读模式）**：
+  - 全面支持**实时预览/源码编辑模式**与**阅读视图（Reading View）**；
+  - 结合 Obsidian 原生懒加载虚拟分段内核与 16 帧几何对齐，无论点击第 1 章还是远端第 30 章，**目标章节永远绝对稳定停靠在编辑器顶部（留出 20px 舒适间距）**。
+- 🔊 **机械微动开关清脆交互音效**：
+  - 内置基于 Web Audio API 的微型物理合成器，点击横线与跨章节滚动时伴随清脆微动开关触感声，无需加载外置音频文件。
 - 🚀 **120 FPS 硬件加速滚动节流 (`requestAnimationFrame`)**：
-  - 基于 CodeMirror 6 底层视口行号精确检测当前阅读位置；
+  - 基于 CodeMirror 6 底层视口行号与阅读模式精准检测当前阅读位置；
   - 翻阅上万字、上百公式的长篇数学笔记时，依然保持 **0 掉帧、0 CPU 负担**。
 - 📱 **分屏与窄屏自适应隐藏**：
   - 左边写笔记、右边开 PDF 双拼时，自动感应宽度并智能隐去，绝不遮挡正文内容。
 - ⚙️ **中英双语设置面板**：
   - 默认英文，并智能自适应中文系统语言；
-  - 可选是否开启 3 行摘要预览、过滤展示层级（H1~H3 或全部）、忽略文档首个 H1 主标题、自定义高亮色系（默认天青蓝、紫罗兰、日落琥珀、樱花粉、主题强调色）。
+  - 可选是否开启 3 行摘要预览、过滤展示层级（默认仅展示 H1~H2 保持极简）、忽略文档首个 H1 主标题、自定义高亮色系、微调音效音量。
 
 ---
 
@@ -157,9 +166,11 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 | :--- | :--- | :--- |
 | **开启正文 3 行摘要预览** | 在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。 | `开启 (true)` |
 | **忽略文档首个一级大标题** | 开启后，文章最开头的 `# 篇名` 不会生成横线，仅展示正文小节。 | `关闭 (false)` |
-| **最大展示标题层级** | 过滤更深层级的子小节（如选择 H1~H3 则忽略 H4~H6）。 | `全部 H1 ~ H6` |
+| **最大展示标题层级** | 过滤更深层级的子小节（如选择 H1~H2 则仅展示大纲，过滤 H3~H6）。 | `仅 H1 ~ H2 (默认)` |
 | **激活高亮横线颜色** | 自定义当前阅读章节的横线加亮颜色（天青蓝、紫罗兰、琥珀、樱花粉、主题色）。 | `天青蓝 (#3b82f6)` |
 | **分屏/窄屏自动隐藏宽度阈值** | 笔记窗口宽度小于该像素时自动隐藏横线流以防止遮挡。 | `460px` |
+| **开启微动开关机械音效** | 在点击章节与滚动经过标题时，播放精致的机械微动开关清脆音效。 | `开启 (true)` |
+| **交互音量大小 (%)** | 自定义交互音效的播放音量（0 ~ 100%）。 | `50%` |
 
 ---
 
