@@ -2,15 +2,8 @@
 
 # 🪐 Charter Pipeline
 
-**Minimalist Linear-style floating horizontal dash stepper for Obsidian with KaTeX formula preview & pinned-top navigation.**
-
-*极简内嵌式 Linear 风格文章章节横线步进流导航插件：散落悬浮、LaTeX / KaTeX 公式预览、精准置顶跳转与分屏自适应隐藏。*
-
-<br/>
-
-> **💡 一句话总结 / In a nutshell**  
-> **把沉重的目录和复杂的进度条，精简成了几根散落悬浮的高级极简线条，悬浮能看公式摘要，点击能精准置顶跳转。**  
-> *(Replaces bulky outline sidebars and noisy progress bars with a few elegant, floating minimalist dash lines — hover to preview KaTeX formula excerpts, click to smooth scroll & pin to the top.)*
+**Minimalist Linear-Style Floating Dash Stepper & Outline Navigation for Obsidian**  
+*极简内嵌式 Linear 风格散落横线步进流 · KaTeX 公式预览 · 双模精准置顶*
 
 <br/>
 
