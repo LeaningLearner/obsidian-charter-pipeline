@@ -945,10 +945,10 @@ class ChapterPipelinePlugin extends Plugin {
     const headingText = (typeof chap === 'object' && chap) ? (chap.rawHeading || chap.title) : '';
     const subpath = headingText ? `#${headingText}` : '';
 
-    // 0. 调用 Obsidian 原生状态机制（自动解除折叠、唤醒虚拟DOM、跨模式对齐）
+    // 0. 调用 Obsidian 原生状态机制（自动解除折叠、唤醒虚拟DOM、跨模式对齐，focus: false 彻底避免选中文字与背景高亮）
     try {
       if (typeof targetView.setEphemeralState === 'function') {
-        targetView.setEphemeralState(subpath ? { subpath, line, focus: true } : { line, focus: true });
+        targetView.setEphemeralState(subpath ? { subpath, line, focus: false } : { line, focus: false });
       }
     } catch (e) {
       // ignore

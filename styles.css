@@ -70,19 +70,38 @@
 .codex-dash-item.level-5 .codex-dash-bar,
 .codex-dash-item.level-6 .codex-dash-bar { width: 6px; }
 
-/* 彻底清除 Obsidian 默认在跳转时附加的正文行高亮 / 闪烁效果（保持正文纯净，不产生多余高亮） */
+/* 彻底清除 Obsidian 默认在跳转与阅读时附加的正文文字/行/段落背景高亮及闪烁效果（保持正文纯净，不产生多余高亮） */
 .workspace-leaf .markdown-preview-view .is-flashing,
+.workspace-leaf .markdown-preview-view .flashing,
 .workspace-leaf .markdown-rendered .is-flashing,
+.workspace-leaf .markdown-rendered .flashing,
 .workspace-leaf .markdown-preview-section.is-flashing,
+.workspace-leaf .markdown-preview-section.flashing,
+.workspace-leaf .markdown-rendered h1.is-flashing,
+.workspace-leaf .markdown-rendered h2.is-flashing,
+.workspace-leaf .markdown-rendered h3.is-flashing,
+.workspace-leaf .markdown-rendered h4.is-flashing,
+.workspace-leaf .markdown-rendered h5.is-flashing,
+.workspace-leaf .markdown-rendered h6.is-flashing,
+.workspace-leaf .markdown-rendered h1.is-highlighted,
+.workspace-leaf .markdown-rendered h2.is-highlighted,
+.workspace-leaf .markdown-rendered h3.is-highlighted,
+.workspace-leaf .markdown-rendered h4.is-highlighted,
+.workspace-leaf .markdown-rendered h5.is-highlighted,
+.workspace-leaf .markdown-rendered h6.is-highlighted,
 .workspace-leaf .cm-active-line.is-flashing,
+.workspace-leaf .cm-line.is-flashing,
 .workspace-leaf .is-flashing,
 .workspace-leaf .flashing,
 .workspace-leaf .is-highlighted,
-.workspace-leaf .cm-line.is-flashing {
+.workspace-leaf .highlighted {
   animation: none;
+  background: transparent;
   background-color: transparent;
   box-shadow: none;
   outline: none;
+  border-radius: 0;
+  transition: none;
 }
 
 /* 鼠标悬浮态：磁吸弹簧果冻延展 */
