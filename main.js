@@ -396,6 +396,13 @@ class ChapterSuggestModal extends SuggestModal {
     if (typeof this.setPlaceholder === 'function') {
       this.setPlaceholder('Search chapter or formula...');
     }
+    if (this.modalEl) {
+      if (typeof this.modalEl.addClass === 'function') {
+        this.modalEl.addClass('codex-suggest-modal');
+      } else if (this.modalEl.classList && typeof this.modalEl.classList.add === 'function') {
+        this.modalEl.classList.add('codex-suggest-modal');
+      }
+    }
   }
 
   getItems() {
@@ -409,9 +416,9 @@ class ChapterSuggestModal extends SuggestModal {
   renderSuggestion(item, el) {
     if (typeof el.empty === 'function') el.empty();
     if (typeof el.addClass === 'function') {
-      el.addClass('codex-suggest-item');
+      el.addClass('codex-suggest-item', 'codex-modal-item');
     } else if (el.classList && typeof el.classList.add === 'function') {
-      el.classList.add('codex-suggest-item');
+      el.classList.add('codex-suggest-item', 'codex-modal-item');
     }
 
     const headerEl = (typeof el.createDiv === 'function')
@@ -997,6 +1004,9 @@ class ChapterPipelinePlugin extends Plugin {
 
     // 2. 创建悬浮章节名独立气泡浮层（直接挂载到 document.body，采用全局屏幕坐标精准对齐）
     const floatingTooltip = document.body.createDiv({ cls: 'codex-floating-tooltip' });
+    if (this.settings.tooltipGlassmorphism === false) {
+      floatingTooltip.classList.add('is-solid');
+    }
 
     // 3. 动态留白空间感知与绝对防触碰正文计算
     const updateGutterDimensions = () => {
@@ -1140,6 +1150,12 @@ class ChapterPipelinePlugin extends Plugin {
         if (this.settings.showExcerpt !== false && chap.summaryMarkdown) {
           const excerptEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-excerpt' });
           MarkdownRenderer.render(this.app, chap.summaryMarkdown, excerptEl, '', this);
+        }
+
+        if (this.settings.tooltipGlassmorphism === false) {
+          floatingTooltip.classList.add('is-solid');
+        } else {
+          floatingTooltip.classList.remove('is-solid');
         }
 
         floatingTooltip.classList.add('is-visible');

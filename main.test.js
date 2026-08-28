@@ -219,6 +219,7 @@ class SuggestModal {
     this.app = app;
     this.isOpen = false;
     this.placeholder = '';
+    this.modalEl = new FakeElement({ classes: ['modal'] });
   }
 
   setPlaceholder(text) {
@@ -1198,4 +1199,78 @@ test('updateHierarchyFolding handles direct H3s under H1 and standalone deep hea
   assert.equal(dashEls[2].classList.contains('is-collapsed'), true, 'H3 under first H1 should collapse');
   assert.equal(dashEls[4].classList.contains('is-collapsed'), false, 'H3 under second H1 should expand');
 });
+
+test('tooltipGlassmorphism setting toggles .is-solid class on floating tooltip', async () => {
+  const harness = createReadingHarness();
+  const { container, plugin, view } = harness;
+
+  // Case 1: Default tooltipGlassmorphism = true -> should not have is-solid
+  plugin.settings.tooltipGlassmorphism = true;
+  await plugin.attachStepperToView(view);
+
+  let tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip, 'tooltip should exist in DOM');
+  assert.equal(tooltip.classList.contains('is-solid'), false, 'should not have is-solid when glassmorphism enabled');
+
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  dashes[0].dispatch('mouseenter');
+  assert.equal(tooltip.classList.contains('is-solid'), false, 'should not have is-solid on mouseenter when glassmorphism enabled');
+
+  // Case 2: tooltipGlassmorphism = false -> should have is-solid
+  plugin.settings.tooltipGlassmorphism = false;
+  await plugin.attachStepperToView(view);
+
+  tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip, 'new tooltip should exist');
+  assert.equal(tooltip.classList.contains('is-solid'), true, 'should have is-solid when glassmorphism disabled');
+
+  const newDashes = container.querySelectorAll('.codex-dash-item');
+  newDashes[0].dispatch('mouseenter');
+  assert.equal(tooltip.classList.contains('is-solid'), true, 'should keep is-solid on mouseenter when glassmorphism disabled');
+});
+
+test('narrow viewport toggles .is-narrow on stepper container and resets tooltip visibility without display:none', async () => {
+  const harness = createReadingHarness();
+  const { container, plugin, view } = harness;
+  plugin.settings.narrowThreshold = 600;
+
+  // Set narrow width (< 380px threshold)
+  container.clientWidth = 320;
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer, 'stepper container should exist');
+  assert.equal(stepperContainer.classList.contains('is-narrow'), true, 'stepper should have is-narrow class');
+
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip);
+  assert.equal(tooltip.classList.contains('is-visible'), false, 'tooltip should not be visible when narrow');
+
+  // Expand container width back to normal (> 380px)
+  container.clientWidth = 900;
+  // Trigger updateGutterDimensions via re-attaching or observer
+  await plugin.attachStepperToView(view);
+  const updatedStepper = container.querySelector('.codex-stepper-container');
+  assert.equal(updatedStepper.classList.contains('is-narrow'), false, 'is-narrow should be removed when container expands');
+});
+
+test('ChapterSuggestModal applies .codex-suggest-modal class to modalEl and renders .codex-modal-item', () => {
+  const { app, plugin, view } = createReadingHarness();
+  const ChapterSuggestModal = ChapterPipelinePlugin.ChapterSuggestModal;
+  assert.ok(ChapterSuggestModal);
+
+  const chapters = [
+    { title: 'Chapter 1', level: 1, line: 0, summaryMarkdown: 'First line excerpt' }
+  ];
+
+  const modal = new ChapterSuggestModal(app, plugin, view, chapters);
+  assert.ok(modal.modalEl, 'modalEl should exist');
+  assert.equal(modal.modalEl.classList.contains('codex-suggest-modal'), true, 'modalEl should have codex-suggest-modal class');
+
+  const el = new FakeElement();
+  modal.renderSuggestion(chapters[0], el);
+  assert.equal(el.classList.contains('codex-suggest-item'), true, 'suggestion should have codex-suggest-item class');
+  assert.equal(el.classList.contains('codex-modal-item'), true, 'suggestion should have codex-modal-item class');
+});
+
 
