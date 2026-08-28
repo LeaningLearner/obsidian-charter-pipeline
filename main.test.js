@@ -653,7 +653,7 @@ test('Settings load new default properties with backward compatibility', async (
   const plugin = new ChapterPipelinePlugin(app, {});
   await plugin.loadSettings();
   assert.equal(plugin.settings.dockPosition, 'left');
-  assert.equal(plugin.settings.hierarchyMode, 'all');
+  assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
   assert.equal(plugin.settings.showProgressRail, false);
   assert.equal(plugin.settings.tooltipGlassmorphism, true);
 });
@@ -663,13 +663,13 @@ test('Settings load preserves existing custom values', async () => {
   const plugin = new ChapterPipelinePlugin(app, {});
   plugin.loadData = async () => ({
     dockPosition: 'right',
-    hierarchyMode: 'hover-expand',
+    hierarchyMode: 'all',
     showProgressRail: true,
     tooltipGlassmorphism: false,
   });
   await plugin.loadSettings();
   assert.equal(plugin.settings.dockPosition, 'right');
-  assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
+  assert.equal(plugin.settings.hierarchyMode, 'all');
   assert.equal(plugin.settings.showProgressRail, true);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
 });
@@ -702,9 +702,9 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   const hierSetting = Setting.instances.find(s => s.controls.some(c => c.options && 'hover-expand' in c.options));
   assert.ok(hierSetting, 'hierarchyMode dropdown setting should be rendered');
   const hierControl = hierSetting.controls[0];
-  assert.equal(hierControl.value, 'all');
-  await hierControl.changeHandler('hover-expand');
-  assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
+  assert.equal(hierControl.value, 'hover-expand');
+  await hierControl.changeHandler('all');
+  assert.equal(plugin.settings.hierarchyMode, 'all');
 
   // Find showProgressRail toggle setting
   const railSetting = Setting.instances.find(s => s.name.includes('Progress Rail') || s.name.includes('垂直进度导轨'));

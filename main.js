@@ -12,7 +12,7 @@ const DEFAULT_SETTINGS = {
   enableSound: true,
   soundVolume: 50,
   dockPosition: 'left',
-  hierarchyMode: 'all',
+  hierarchyMode: 'hover-expand',
   showProgressRail: false,
   tooltipGlassmorphism: true
 };
@@ -33,8 +33,8 @@ const I18N = {
     hierarchyModeName: 'Heading Hierarchy Mode',
     hierarchyModeDesc: 'Control the display mode of subheadings (H3~H6).',
     hierarchyModeOptions: {
-      'all': 'All Headings Expanded (Default)',
-      'hover-expand': 'Focus Mode (Collapse H3+, Expand on Hover)',
+      'hover-expand': 'Focus Mode (Default / Hover Expand)',
+      'all': 'All Headings Expanded',
       'active-branch': 'Active Branch Only (Expand current section branch)'
     },
     showProgressRailName: 'Show Vertical Progress Rail',
@@ -81,8 +81,8 @@ const I18N = {
     hierarchyModeName: '多级标题展示模式',
     hierarchyModeDesc: '控制 H3~H6 深层子小节的折叠与聚焦策略。',
     hierarchyModeOptions: {
-      'all': '全部平铺展开 (默认)',
-      'hover-expand': '主干聚焦模式 (默认收起 H3+，鼠标悬停导轨时平滑展开)',
+      'hover-expand': '主干聚焦模式 (默认 / 悬停展开)',
+      'all': '全部平铺展开',
       'active-branch': '当前分支聚焦 (仅展开当前阅读章节的子小节)'
     },
     showProgressRailName: '开启垂直进度导轨',
@@ -525,7 +525,7 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           drop.addOption(key, val);
         }
         drop
-          .setValue(this.plugin.settings.hierarchyMode || 'all')
+          .setValue(this.plugin.settings.hierarchyMode || 'hover-expand')
           .onChange(async (value) => {
             this.plugin.settings.hierarchyMode = value;
             await this.plugin.saveSettings();
@@ -785,7 +785,7 @@ class ChapterPipelinePlugin extends Plugin {
       this.settings.dockPosition = 'left';
     }
     if (!this.settings.hierarchyMode) {
-      this.settings.hierarchyMode = 'all';
+      this.settings.hierarchyMode = 'hover-expand';
     }
     if (this.settings.showProgressRail === undefined) {
       this.settings.showProgressRail = false;
