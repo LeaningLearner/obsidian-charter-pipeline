@@ -909,7 +909,6 @@ test('left docking applies left gutter scaling and normal tooltip positioning', 
 
   const dashItems = container.querySelectorAll('.codex-dash-item');
   dashItems[0].rect = { left: 10, right: 40, top: 200, height: 20 };
-
   dashItems[0].dispatch('mouseenter');
   const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
   assert.ok(tooltip);
@@ -918,5 +917,89 @@ test('left docking applies left gutter scaling and normal tooltip positioning', 
   assert.equal(tooltip.style.values.get('left'), '52px');
 });
 
+test('showProgressRail creates vertical rail and indicator when enabled', async () => {
+  const harness = createReadingHarness();
+  const { container, plugin, view } = harness;
+  plugin.settings.showProgressRail = true;
 
+  await plugin.attachStepperToView(view);
 
+  const track = container.querySelector('.codex-stepper-track');
+  assert.ok(track, 'stepper track should exist');
+
+  const rail = track.querySelector('.codex-progress-rail');
+  assert.ok(rail, '.codex-progress-rail should exist inside track');
+
+  const indicator = rail.querySelector('.codex-progress-indicator');
+  assert.ok(indicator, '.codex-progress-indicator should exist inside rail');
+  assert.equal(indicator.style.values.get('height'), '0%');
+});
+
+test('showProgressRail does not create rail when disabled', async () => {
+  const harness = createReadingHarness();
+  const { container, plugin, scroller, view } = harness;
+  plugin.settings.showProgressRail = false;
+
+  await plugin.attachStepperToView(view);
+
+  const track = container.querySelector('.codex-stepper-track');
+  assert.ok(track, 'stepper track should exist');
+  assert.equal(track.querySelector('.codex-progress-rail'), null);
+  assert.equal(track.querySelector('.codex-progress-indicator'), null);
+
+  // Verify scrolling and clicking work without errors when rail is disabled
+  scroller.scrollTop = 300;
+  scroller.dispatch('scroll');
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashes.length, 2);
+  dashes[1].dispatch('click');
+});
+
+test('progress rail indicator updates smoothly on scroll and chapter click', async () => {
+  const harness = createReadingHarness();
+  const { container, plugin, scroller, view } = harness;
+  plugin.settings.showProgressRail = true;
+
+  await plugin.attachStepperToView(view);
+
+  const indicator = container.querySelector('.codex-progress-indicator');
+  assert.ok(indicator);
+  assert.equal(indicator.style.values.get('height'), '0%');
+
+  // Scroll to second chapter (H2 at line 4)
+  scroller.scrollTop = 300;
+  scroller.dispatch('scroll');
+  assert.equal(indicator.style.values.get('height'), '100%');
+
+  // Scroll back to top
+  scroller.scrollTop = 0;
+  scroller.dispatch('scroll');
+  assert.equal(indicator.style.values.get('height'), '0%');
+
+  // Click on second chapter
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  dashes[1].dispatch('click');
+  assert.equal(indicator.style.values.get('height'), '100%');
+
+  // Click back on first chapter
+  dashes[0].dispatch('click');
+  assert.equal(indicator.style.values.get('height'), '0%');
+});
+
+test('progress rail handles single chapter and custom offset measurements gracefully', async () => {
+  const harness = createReadingHarness();
+  const { app, container, plugin, view } = harness;
+  plugin.settings.showProgressRail = true;
+
+  // Single chapter test
+  app.metadataCache.getFileCache = () => ({
+    headings: [{ heading: 'Single Chapter', level: 1, position: { start: { line: 0 } } }]
+  });
+  app.vault.cachedRead = async () => '# Single Chapter\nContent';
+
+  await plugin.attachStepperToView(view);
+
+  const indicator = container.querySelector('.codex-progress-indicator');
+  assert.ok(indicator);
+  assert.equal(indicator.style.values.get('height'), '100%');
+});

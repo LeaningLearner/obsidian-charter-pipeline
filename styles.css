@@ -53,6 +53,39 @@
   box-shadow: none;
 }
 
+/* 垂直进度导轨与激活指示器 */
+.codex-progress-rail {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 1.5px;
+  background-color: var(--background-modifier-border, rgba(125, 125, 125, 0.18));
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.codex-stepper-container.dock-right .codex-progress-rail {
+  left: auto;
+  right: 0;
+}
+
+.codex-progress-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0%;
+  background-color: var(--codex-active-color, #3b82f6);
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--codex-active-color, rgba(59, 130, 246, 0.45));
+  transition: height 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.18s ease;
+  pointer-events: none;
+}
+
 /* 单个横线项目（触碰热区优化） */
 .codex-dash-item {
   position: relative;

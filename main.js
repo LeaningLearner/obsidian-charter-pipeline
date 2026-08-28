@@ -906,6 +906,13 @@ class ChapterPipelinePlugin extends Plugin {
     stepperContainer.style.setProperty('--codex-active-color', this.settings.activeColor || '#3b82f6');
     const track = stepperContainer.createDiv({ cls: 'codex-stepper-track' });
 
+    let railEl = null;
+    let railIndicator = null;
+    if (this.settings.showProgressRail !== false) {
+      railEl = track.createDiv({ cls: 'codex-progress-rail' });
+      railIndicator = railEl.createDiv({ cls: 'codex-progress-indicator' });
+    }
+
     const count = chapters.length;
     let dynamicGap = 5;
     if (count > 30) dynamicGap = 2;
@@ -995,7 +1002,24 @@ class ChapterPipelinePlugin extends Plugin {
     let isClickScrolling = false;
     let clickTimeout = null;
 
-    chapters.forEach((chap) => {
+    const updateRailIndicator = (idx) => {
+      if (!railIndicator) return;
+      const total = chapters.length;
+      if (total <= 1) {
+        railIndicator.style.height = '100%';
+        return;
+      }
+      const activeItem = dashElements[idx];
+      if (activeItem && typeof activeItem.offsetTop === 'number' && activeItem.offsetTop > 0) {
+        const targetHeight = activeItem.offsetTop + (activeItem.offsetHeight || 10) / 2;
+        railIndicator.style.height = `${targetHeight}px`;
+      } else {
+        const pct = Math.round((idx / (total - 1)) * 100);
+        railIndicator.style.height = `${pct}%`;
+      }
+    };
+
+    chapters.forEach((chap, i) => {
       const dashItem = track.createDiv({
         cls: `codex-dash-item level-${Math.min(chap.level, 6)}`,
         attr: { 'data-line': chap.line }
@@ -1060,6 +1084,7 @@ class ChapterPipelinePlugin extends Plugin {
 
         dashElements.forEach(d => d.classList.remove('active'));
         dashItem.classList.add('active');
+        updateRailIndicator(i);
 
         // 触发清脆机械微动按键音
         if (this.settings.enableSound !== false) {
@@ -1110,14 +1135,21 @@ class ChapterPipelinePlugin extends Plugin {
           el.classList.remove('active');
         }
       });
+
+      updateRailIndicator(activeIdx);
     };
 
     const throttledScroll = () => {
       if (rAF) return;
+      let executed = false;
       rAF = requestAnimationFrame(() => {
+        executed = true;
         updateActiveByRealLine();
         rAF = null;
       });
+      if (executed) {
+        rAF = null;
+      }
     };
 
     updateActiveByRealLine();
