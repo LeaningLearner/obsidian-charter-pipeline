@@ -10,7 +10,11 @@ const DEFAULT_SETTINGS = {
   activeColor: '#3b82f6',
   narrowThreshold: 600,
   enableSound: true,
-  soundVolume: 50
+  soundVolume: 50,
+  dockPosition: 'left',
+  hierarchyMode: 'all',
+  showProgressRail: true,
+  tooltipGlassmorphism: true
 };
 
 const I18N = {
@@ -20,6 +24,23 @@ const I18N = {
     showExcerptDesc: 'Display a 3-line excerpt of the section with KaTeX formula rendering below the title in the hover popover card. When disabled, only the clean title is shown.',
     ignoreH1Name: 'Ignore First H1 (# Note Title)',
     ignoreH1Desc: 'When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections.',
+    dockPositionName: 'Dock Position',
+    dockPositionDesc: 'Choose whether to display the outline pipeline on the left or right margin of the note.',
+    dockPositionOptions: {
+      'left': 'Left Margin (Default)',
+      'right': 'Right Margin'
+    },
+    hierarchyModeName: 'Heading Hierarchy Mode',
+    hierarchyModeDesc: 'Control the display mode of subheadings (H3~H6).',
+    hierarchyModeOptions: {
+      'all': 'All Headings Expanded (Default)',
+      'hover-expand': 'Focus Mode (Collapse H3+, Expand on Hover)',
+      'active-branch': 'Active Branch Only (Expand current section branch)'
+    },
+    showProgressRailName: 'Show Vertical Progress Rail',
+    showProgressRailDesc: 'Display a smooth magnetic vertical progress guide line indicating reading position.',
+    tooltipGlassmorphismName: 'Tooltip Glassmorphism & Spring Physics',
+    tooltipGlassmorphismDesc: 'Enable backdrop blur glassmorphism and spring overshoot animations for hover popovers.',
     maxLevelName: 'Max Heading Level',
     maxLevelDesc: 'Filter deeper subheadings (e.g. choose H1~H3 to hide H4~H6).',
     maxLevelOptions: {
@@ -51,6 +72,23 @@ const I18N = {
     showExcerptDesc: '在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。',
     ignoreH1Name: '忽略文档首个一级大标题 (# 篇名)',
     ignoreH1Desc: '开启后，文章最开头的第一个 H1 大标题不会生成横线，仅展示正文小节。',
+    dockPositionName: '靠栏停靠位置',
+    dockPositionDesc: '选择大纲横线流停靠在笔记编辑区的左侧或右侧边栏。',
+    dockPositionOptions: {
+      'left': '左侧边栏 (默认)',
+      'right': '右侧边栏'
+    },
+    hierarchyModeName: '多级标题展示模式',
+    hierarchyModeDesc: '控制 H3~H6 深层子小节的折叠与聚焦策略。',
+    hierarchyModeOptions: {
+      'all': '全部平铺展开 (默认)',
+      'hover-expand': '主干聚焦模式 (默认收起 H3+，鼠标悬停导轨时平滑展开)',
+      'active-branch': '当前分支聚焦 (仅展开当前阅读章节的子小节)'
+    },
+    showProgressRailName: '开启垂直进度导轨',
+    showProgressRailDesc: '在横线左侧显示一条极简平滑的垂直微光导轨，实时指示当前章节阅读进度。',
+    tooltipGlassmorphismName: '毛玻璃质感与弹簧动效',
+    tooltipGlassmorphismDesc: '开启悬浮气泡毛玻璃模糊背景 (Backdrop Blur) 与拟物弹簧微动进场动效。',
     maxLevelName: '最大展示标题层级',
     maxLevelDesc: '例如设为 2 则只展示 H1~H2 章节，过滤更深层级的子小节。',
     maxLevelOptions: {
@@ -79,7 +117,7 @@ const I18N = {
 };
 
 function getLocale() {
-  const lang = window.localStorage.getItem('language') || (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
+  const lang = (typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('language') : null) || (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
   return String(lang).toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
 
@@ -320,6 +358,64 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName(t.dockPositionName)
+      .setDesc(t.dockPositionDesc)
+      .addDropdown((drop) => {
+        for (const [key, val] of Object.entries(t.dockPositionOptions)) {
+          drop.addOption(key, val);
+        }
+        drop
+          .setValue(this.plugin.settings.dockPosition || 'left')
+          .onChange(async (value) => {
+            this.plugin.settings.dockPosition = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t.hierarchyModeName)
+      .setDesc(t.hierarchyModeDesc)
+      .addDropdown((drop) => {
+        for (const [key, val] of Object.entries(t.hierarchyModeOptions)) {
+          drop.addOption(key, val);
+        }
+        drop
+          .setValue(this.plugin.settings.hierarchyMode || 'all')
+          .onChange(async (value) => {
+            this.plugin.settings.hierarchyMode = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t.showProgressRailName)
+      .setDesc(t.showProgressRailDesc)
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showProgressRail !== false)
+          .onChange(async (value) => {
+            this.plugin.settings.showProgressRail = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName(t.tooltipGlassmorphismName)
+      .setDesc(t.tooltipGlassmorphismDesc)
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.tooltipGlassmorphism !== false)
+          .onChange(async (value) => {
+            this.plugin.settings.tooltipGlassmorphism = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          })
+      );
+
     const levelSetting = new Setting(containerEl)
       .setName(t.maxLevelName)
       .setDesc(t.maxLevelDesc)
@@ -495,6 +591,18 @@ class ChapterPipelinePlugin extends Plugin {
     }
     if (this.settings.soundVolume === undefined) {
       this.settings.soundVolume = 50;
+    }
+    if (!this.settings.dockPosition) {
+      this.settings.dockPosition = 'left';
+    }
+    if (!this.settings.hierarchyMode) {
+      this.settings.hierarchyMode = 'all';
+    }
+    if (this.settings.showProgressRail === undefined) {
+      this.settings.showProgressRail = true;
+    }
+    if (this.settings.tooltipGlassmorphism === undefined) {
+      this.settings.tooltipGlassmorphism = true;
     }
     await this.saveSettings();
   }

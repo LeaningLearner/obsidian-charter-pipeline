@@ -45,6 +45,10 @@ class FakeElement {
     return child;
   }
 
+  createEl(tagName, options = {}) {
+    return this.append(this.createChild(tagName, options));
+  }
+
   createDiv(options = {}) {
     return this.append(this.createChild('div', options));
   }
@@ -153,11 +157,93 @@ class ObsidianPlugin {
     this.app = app;
     this.manifest = manifest;
   }
+
+  async loadData() {
+    return {};
+  }
+
+  async saveData(data) {
+    this._savedData = data;
+  }
+
+  addSettingTab(tab) {
+    this.settingTab = tab;
+  }
+
+  registerEvent() {}
 }
 
 class MarkdownView {}
-class PluginSettingTab {}
-class Setting {}
+
+class PluginSettingTab {
+  constructor(app, plugin) {
+    this.app = app;
+    this.plugin = plugin;
+    this.containerEl = new FakeElement({ tagName: 'div' });
+  }
+}
+
+class Setting {
+  static instances = [];
+
+  constructor(containerEl) {
+    this.containerEl = containerEl;
+    this.name = '';
+    this.desc = '';
+    this.controls = [];
+    Setting.instances.push(this);
+  }
+
+  setName(name) {
+    this.name = name;
+    return this;
+  }
+
+  setDesc(desc) {
+    this.desc = desc;
+    return this;
+  }
+
+  addToggle(cb) {
+    const toggle = {
+      value: false,
+      setValue: (val) => { toggle.value = val; return toggle; },
+      onChange: (fn) => { toggle.changeHandler = fn; return toggle; },
+    };
+    cb(toggle);
+    this.controls.push(toggle);
+    return this;
+  }
+
+  addDropdown(cb) {
+    const drop = {
+      options: {},
+      value: '',
+      addOption: (k, v) => { drop.options[k] = v; return drop; },
+      setValue: (val) => { drop.value = val; return drop; },
+      onChange: (fn) => { drop.changeHandler = fn; return drop; },
+    };
+    cb(drop);
+    this.controls.push(drop);
+    return this;
+  }
+
+  addSlider(cb) {
+    const slider = {
+      min: 0,
+      max: 100,
+      step: 1,
+      value: 0,
+      setLimits: (min, max, step) => { slider.min = min; slider.max = max; slider.step = step; return slider; },
+      setValue: (val) => { slider.value = val; return slider; },
+      setDynamicTooltip: () => slider,
+      onChange: (fn) => { slider.changeHandler = fn; return slider; },
+    };
+    cb(slider);
+    this.controls.push(slider);
+    return this;
+  }
+}
 
 const originalLoad = Module._load;
 Module._load = function loadWithObsidianStub(request, parent, isMain) {
@@ -500,5 +586,78 @@ test('chapter items render with level classes and mouseenter displays the Linear
   assert.ok(badgeH2Active.classList.contains('is-active'));
 });
 
+test('Settings load new default properties with backward compatibility', async () => {
+  const { app } = createReadingHarness();
+  const plugin = new ChapterPipelinePlugin(app, {});
+  await plugin.loadSettings();
+  assert.equal(plugin.settings.dockPosition, 'left');
+  assert.equal(plugin.settings.hierarchyMode, 'all');
+  assert.equal(plugin.settings.showProgressRail, true);
+  assert.equal(plugin.settings.tooltipGlassmorphism, true);
+});
 
+test('Settings load preserves existing custom values', async () => {
+  const { app } = createReadingHarness();
+  const plugin = new ChapterPipelinePlugin(app, {});
+  plugin.loadData = async () => ({
+    dockPosition: 'right',
+    hierarchyMode: 'hover-expand',
+    showProgressRail: false,
+    tooltipGlassmorphism: false,
+  });
+  await plugin.loadSettings();
+  assert.equal(plugin.settings.dockPosition, 'right');
+  assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
+  assert.equal(plugin.settings.showProgressRail, false);
+  assert.equal(plugin.settings.tooltipGlassmorphism, false);
+});
+
+test('ChapterPipelineSettingTab renders all controls and updates settings', async () => {
+  Setting.instances = [];
+  const { app } = createReadingHarness();
+  app.workspace.on = () => {};
+  app.workspace.onLayoutReady = () => {};
+  app.metadataCache = { on: () => {} };
+  const plugin = new ChapterPipelinePlugin(app, {});
+  await plugin.onload();
+
+  assert.ok(plugin.settingTab);
+  let viewsUpdated = 0;
+  plugin.updateAllMarkdownViews = () => { viewsUpdated++; };
+
+  plugin.settingTab.display();
+
+  // Find dockPosition dropdown setting
+  const dockSetting = Setting.instances.find(s => s.controls.some(c => c.options && 'left' in c.options && 'right' in c.options));
+  assert.ok(dockSetting, 'dockPosition dropdown setting should be rendered');
+  const dockControl = dockSetting.controls[0];
+  assert.equal(dockControl.value, 'left');
+  await dockControl.changeHandler('right');
+  assert.equal(plugin.settings.dockPosition, 'right');
+  assert.equal(viewsUpdated, 1);
+
+  // Find hierarchyMode dropdown setting
+  const hierSetting = Setting.instances.find(s => s.controls.some(c => c.options && 'hover-expand' in c.options));
+  assert.ok(hierSetting, 'hierarchyMode dropdown setting should be rendered');
+  const hierControl = hierSetting.controls[0];
+  assert.equal(hierControl.value, 'all');
+  await hierControl.changeHandler('hover-expand');
+  assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
+
+  // Find showProgressRail toggle setting
+  const railSetting = Setting.instances.find(s => s.name.includes('Progress Rail') || s.name.includes('垂直进度导轨'));
+  assert.ok(railSetting, 'showProgressRail toggle setting should be rendered');
+  const railControl = railSetting.controls[0];
+  assert.equal(railControl.value, true);
+  await railControl.changeHandler(false);
+  assert.equal(plugin.settings.showProgressRail, false);
+
+  // Find tooltipGlassmorphism toggle setting
+  const glassSetting = Setting.instances.find(s => s.name.includes('Glassmorphism') || s.name.includes('毛玻璃'));
+  assert.ok(glassSetting, 'tooltipGlassmorphism toggle setting should be rendered');
+  const glassControl = glassSetting.controls[0];
+  assert.equal(glassControl.value, true);
+  await glassControl.changeHandler(false);
+  assert.equal(plugin.settings.tooltipGlassmorphism, false);
+});
 
