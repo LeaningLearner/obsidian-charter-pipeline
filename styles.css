@@ -17,6 +17,22 @@
   transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s ease;
 }
 
+/* 右侧停靠模式 */
+.codex-stepper-container.dock-right {
+  right: 8px;
+  left: auto;
+  align-items: flex-end;
+}
+
+.codex-stepper-container.dock-right .codex-stepper-track {
+  align-items: flex-end;
+}
+
+.codex-stepper-container.dock-right .codex-dash-bar {
+  transform-origin: right center;
+  margin-right: 0;
+}
+
 /* 窄屏/分屏自适应隐藏 */
 .codex-stepper-container.is-narrow {
   display: none;
@@ -202,9 +218,17 @@ body .workspace-leaf .mod-highlighted {
   gap: 5px;
 }
 
+.codex-floating-tooltip.dock-right {
+  transform: translateY(-50%) translateX(6px);
+}
+
 .codex-floating-tooltip.is-visible {
   opacity: 1;
   visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.codex-floating-tooltip.dock-right.is-visible {
   transform: translateY(-50%) translateX(0);
 }
 

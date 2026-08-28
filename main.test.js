@@ -33,10 +33,25 @@ class FakeElement {
     this.textContent = textContent;
     this.clientWidth = 900;
     this.scrollTop = 0;
-    this.style = {
-      values: new Map(),
-      setProperty: (name, value) => this.style.values.set(name, value),
-    };
+    const styleValues = new Map();
+    this.style = new Proxy({
+      values: styleValues,
+      setProperty: (name, value) => styleValues.set(name, String(value)),
+      getPropertyValue: (name) => styleValues.get(name) || '',
+    }, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return styleValues.get(prop) || '';
+      },
+      set(target, prop, val) {
+        if (prop === 'values' || prop === 'setProperty' || prop === 'getPropertyValue') {
+          target[prop] = val;
+        } else {
+          styleValues.set(prop, String(val));
+        }
+        return true;
+      }
+    });
   }
 
   addClass(...names) {
@@ -833,5 +848,75 @@ test('onload registers jump-prev, jump-next, and open-palette commands', async (
   paletteCmd.checkCallback(false);
   assert.equal(paletteCalled, true);
 });
+
+test('right docking applies dock-right class, calculates right gutter scaling, and flips tooltip positioning', async () => {
+  const harness = createReadingHarness();
+  const { container, view } = harness;
+  harness.plugin.settings.dockPosition = 'right';
+
+  // Add sizer with specific left and right margins inside container
+  container.rect = { left: 0, right: 1000, top: 0, height: 800 };
+  container.clientWidth = 1000;
+  container.append(new FakeElement({
+    classes: ['markdown-preview-sizer'],
+    rect: { left: 150, right: 880, top: 0, height: 800 }
+  }));
+
+  await harness.plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer, 'stepper container should exist');
+  assert.ok(stepperContainer.classList.contains('dock-right'), 'stepper container should have dock-right class');
+
+  // Gutter is 1000 - 880 = 120px.
+  // h1Width = Math.max(16, Math.min(38, Math.round(120 * 0.35))) = 38px.
+  assert.equal(stepperContainer.style.values.get('--dash-w1'), '38px');
+
+  // Test tooltip positioning on right-dock
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  assert.ok(dashItems.length > 0);
+  dashItems[0].rect = { left: 960, right: 990, top: 200, height: 20 };
+
+  dashItems[0].dispatch('mouseenter');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip, 'tooltip should exist');
+  assert.ok(tooltip.classList.contains('dock-right'), 'tooltip should have dock-right class');
+  // leftX = Math.max(10, 960 - 290 - 12) = 658
+  assert.equal(tooltip.style.values.get('left'), '658px');
+  assert.equal(tooltip.style.values.get('top'), '210px');
+});
+
+test('left docking applies left gutter scaling and normal tooltip positioning', async () => {
+  const harness = createReadingHarness();
+  const { container, view } = harness;
+  harness.plugin.settings.dockPosition = 'left';
+
+  container.rect = { left: 0, right: 1000, top: 0, height: 800 };
+  container.clientWidth = 1000;
+  container.append(new FakeElement({
+    classes: ['markdown-preview-sizer'],
+    rect: { left: 120, right: 850, top: 0, height: 800 }
+  }));
+
+  await harness.plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer);
+  assert.equal(stepperContainer.classList.contains('dock-right'), false);
+
+  // Gutter is 120 - 0 = 120px -> 38px
+  assert.equal(stepperContainer.style.values.get('--dash-w1'), '38px');
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  dashItems[0].rect = { left: 10, right: 40, top: 200, height: 20 };
+
+  dashItems[0].dispatch('mouseenter');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip);
+  assert.equal(tooltip.classList.contains('dock-right'), false);
+  // leftX = Math.min(1200 - 290 - 10, 40 + 12) = 52
+  assert.equal(tooltip.style.values.get('left'), '52px');
+});
+
 
 

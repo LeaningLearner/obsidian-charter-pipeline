@@ -900,6 +900,9 @@ class ChapterPipelinePlugin extends Plugin {
 
     // 1. 创建散落横线容器
     const stepperContainer = container.createDiv({ cls: 'codex-stepper-container' });
+    if (this.settings.dockPosition === 'right') {
+      stepperContainer.classList.add('dock-right');
+    }
     stepperContainer.style.setProperty('--codex-active-color', this.settings.activeColor || '#3b82f6');
     const track = stepperContainer.createDiv({ cls: 'codex-stepper-track' });
 
@@ -931,22 +934,28 @@ class ChapterPipelinePlugin extends Plugin {
 
       // 寻找实际正文 Sizer（编辑视图 .cm-sizer 或阅读视图 .markdown-preview-sizer）
       const sizer = container.querySelector('.cm-sizer') || container.querySelector('.markdown-preview-sizer');
-      let leftGutter = 0;
+      let gutter = 0;
+      const isRightDock = this.settings.dockPosition === 'right';
 
       if (sizer && typeof sizer.getBoundingClientRect === 'function') {
-        const containerRect = typeof container.getBoundingClientRect === 'function' ? container.getBoundingClientRect() : { left: 0 };
+        const containerRect = typeof container.getBoundingClientRect === 'function' ? container.getBoundingClientRect() : { left: 0, right: containerWidth };
         const sizerRect = sizer.getBoundingClientRect();
-        leftGutter = Math.max(0, sizerRect.left - containerRect.left);
+        if (isRightDock) {
+          const containerRight = (containerRect.right !== undefined) ? containerRect.right : (containerRect.left + containerWidth);
+          gutter = Math.max(0, containerRight - sizerRect.right);
+        } else {
+          gutter = Math.max(0, sizerRect.left - containerRect.left);
+        }
       }
 
       // 如果未探测到有效正文 Sizer（例如 0），基于容器宽度估算留白
-      if (leftGutter <= 0 && containerWidth > 0) {
-        leftGutter = Math.max(30, (containerWidth - 650) / 2);
+      if (gutter <= 0 && containerWidth > 0) {
+        gutter = Math.max(30, (containerWidth - 650) / 2);
       }
 
       // 留白越大横线越长（范围 16px ~ 38px，悬浮 22px ~ 44px）
-      const h1Width = Math.max(16, Math.min(38, Math.round(leftGutter * 0.35) || 18));
-      const h1Hover = Math.min(h1Width + 5, Math.max(20, (leftGutter > 30 ? leftGutter - 12 : 24)));
+      const h1Width = Math.max(16, Math.min(38, Math.round(gutter * 0.35) || 18));
+      const h1Hover = Math.min(h1Width + 5, Math.max(20, (gutter > 30 ? gutter - 12 : 24)));
 
       const w1 = h1Width;
       const w2 = Math.max(9, Math.round(h1Width * 0.60));
@@ -1001,7 +1010,18 @@ class ChapterPipelinePlugin extends Plugin {
 
         // 横线条的精确屏幕垂直几何中点
         const centerY = itemRect.top + (itemRect.height / 2);
-        const leftX = itemRect.right + 12;
+        const isRightDock = this.settings.dockPosition === 'right';
+        const tooltipWidth = floatingTooltip.offsetWidth || 290;
+        let leftX;
+
+        if (isRightDock) {
+          floatingTooltip.classList.add('dock-right');
+          leftX = Math.max(10, itemRect.left - tooltipWidth - 12);
+        } else {
+          floatingTooltip.classList.remove('dock-right');
+          const winWidth = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1200;
+          leftX = Math.min(winWidth - tooltipWidth - 10, itemRect.right + 12);
+        }
 
         floatingTooltip.style.top = `${centerY}px`;
         floatingTooltip.style.left = `${leftX}px`;
