@@ -1003,3 +1003,199 @@ test('progress rail handles single chapter and custom offset measurements gracef
   assert.ok(indicator);
   assert.equal(indicator.style.values.get('height'), '100%');
 });
+
+test('hierarchyMode "all" keeps all headings visible without .is-collapsed', async () => {
+  const harness = createReadingHarness();
+  const { app, container, plugin, scroller, view } = harness;
+  plugin.settings.hierarchyMode = 'all';
+
+  app.metadataCache.getFileCache = () => ({
+    headings: [
+      { heading: 'H1 Chapter 1', level: 1, position: { start: { line: 0 } } },
+      { heading: 'H2 Section 1.1', level: 2, position: { start: { line: 4 } } },
+      { heading: 'H3 Topic 1.1.1', level: 3, position: { start: { line: 8 } } },
+      { heading: 'H4 Detail 1.1.1.a', level: 4, position: { start: { line: 12 } } },
+      { heading: 'H2 Section 1.2', level: 2, position: { start: { line: 16 } } },
+      { heading: 'H3 Topic 1.2.1', level: 3, position: { start: { line: 20 } } },
+    ]
+  });
+  app.vault.cachedRead = async () => '# H1\n## H2\n### H3\n#### H4\n## H2-2\n### H3-2';
+
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  const track = container.querySelector('.codex-stepper-track');
+  assert.ok(stepperContainer.classList.contains('hierarchy-mode-all'), 'container should have hierarchy-mode-all class');
+  assert.ok(track.classList.contains('hierarchy-mode-all'), 'track should have hierarchy-mode-all class');
+
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashes.length, 6);
+
+  dashes.forEach((dash, i) => {
+    assert.equal(dash.classList.contains('is-collapsed'), false, `item ${i} should NOT be collapsed in 'all' mode`);
+  });
+
+  // Scroll across chapters
+  scroller.scrollTop = 300;
+  scroller.dispatch('scroll');
+  dashes.forEach((dash, i) => {
+    assert.equal(dash.classList.contains('is-collapsed'), false, `item ${i} should NOT be collapsed after scroll in 'all' mode`);
+  });
+});
+
+test('hierarchyMode "hover-expand" collapses H3-H6 items with .is-collapsed and applies hierarchy-mode-hover-expand class', async () => {
+  const harness = createReadingHarness();
+  const { app, container, plugin, scroller, view } = harness;
+  plugin.settings.hierarchyMode = 'hover-expand';
+
+  app.metadataCache.getFileCache = () => ({
+    headings: [
+      { heading: 'H1 Chapter 1', level: 1, position: { start: { line: 0 } } },
+      { heading: 'H2 Section 1.1', level: 2, position: { start: { line: 4 } } },
+      { heading: 'H3 Topic 1.1.1', level: 3, position: { start: { line: 8 } } },
+      { heading: 'H4 Detail 1.1.1.a', level: 4, position: { start: { line: 12 } } },
+      { heading: 'H2 Section 1.2', level: 2, position: { start: { line: 16 } } },
+      { heading: 'H3 Topic 1.2.1', level: 3, position: { start: { line: 20 } } },
+    ]
+  });
+  app.vault.cachedRead = async () => '# H1\n## H2\n### H3\n#### H4\n## H2-2\n### H3-2';
+
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  const track = container.querySelector('.codex-stepper-track');
+  assert.ok(stepperContainer.classList.contains('hierarchy-mode-hover-expand'), 'container should have hierarchy-mode-hover-expand class');
+  assert.ok(track.classList.contains('hierarchy-mode-hover-expand'), 'track should have hierarchy-mode-hover-expand class');
+
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashes.length, 6);
+
+  // H1 and H2 should NOT be collapsed
+  assert.equal(dashes[0].classList.contains('is-collapsed'), false, 'H1 should not be collapsed');
+  assert.equal(dashes[1].classList.contains('is-collapsed'), false, 'H2 (index 1) should not be collapsed');
+  assert.equal(dashes[4].classList.contains('is-collapsed'), false, 'H2 (index 4) should not be collapsed');
+
+  // H3 and H4 MUST be collapsed
+  assert.equal(dashes[2].classList.contains('is-collapsed'), true, 'H3 (index 2) should be collapsed');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), true, 'H4 (index 3) should be collapsed');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true, 'H3 (index 5) should be collapsed');
+
+  // Scrolling should maintain collapsed state in hover-expand mode
+  scroller.scrollTop = 400;
+  scroller.dispatch('scroll');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), true);
+  assert.equal(dashes[3].classList.contains('is-collapsed'), true);
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true);
+});
+
+test('hierarchyMode "active-branch" dynamically expands current branch subheadings and collapses others on scroll and click', async () => {
+  const harness = createReadingHarness();
+  const { app, container, plugin, scroller, view } = harness;
+  plugin.settings.hierarchyMode = 'active-branch';
+
+  const chapters = [
+    { heading: 'H1 Main', level: 1, position: { start: { line: 0 } } },
+    { heading: 'H2 Section 1', level: 2, position: { start: { line: 4 } } },
+    { heading: 'H3 Sub 1.1', level: 3, position: { start: { line: 8 } } },
+    { heading: 'H4 Sub 1.1.1', level: 4, position: { start: { line: 12 } } },
+    { heading: 'H2 Section 2', level: 2, position: { start: { line: 16 } } },
+    { heading: 'H3 Sub 2.1', level: 3, position: { start: { line: 20 } } },
+  ];
+
+  app.metadataCache.getFileCache = () => ({ headings: chapters });
+  app.vault.cachedRead = async () => chapters.map(c => '#'.repeat(c.level) + ' ' + c.heading).join('\n');
+
+  scroller.empty();
+  chapters.forEach((c) => {
+    scroller.append(new FakeElement({
+      tagName: `h${c.level}`,
+      rect: { top: 100 + c.position.start.line * 20, left: 300, right: 900, height: 30 },
+      attributes: { 'data-line': String(c.position.start.line) },
+      scrollParent: scroller
+    }));
+  });
+
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer.classList.contains('hierarchy-mode-active-branch'));
+
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashes.length, 6);
+
+  // Initial state (active item is 0 / H1 Main):
+  // H1 and H2s are visible.
+  assert.equal(dashes[0].classList.contains('is-collapsed'), false, 'H1 visible');
+  assert.equal(dashes[1].classList.contains('is-collapsed'), false, 'H2 Sec 1 visible');
+  assert.equal(dashes[4].classList.contains('is-collapsed'), false, 'H2 Sec 2 visible');
+
+  // Subheadings under H2 Sec 1 and H2 Sec 2 should be collapsed when at H1
+  assert.equal(dashes[2].classList.contains('is-collapsed'), true, 'H3 Sub 1.1 collapsed initially');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), true, 'H4 Sub 1.1.1 collapsed initially');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true, 'H3 Sub 2.1 collapsed initially');
+
+  // 1. Test Scrolling to line 8 (H3 Sub 1.1)
+  scroller.scrollTop = 8 * 20; // 160
+  scroller.dispatch('scroll');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), false, 'H3 Sub 1.1 expanded after scroll to line 8');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), false, 'H4 Sub 1.1.1 expanded after scroll to line 8');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true, 'H3 Sub 2.1 collapsed after scroll to line 8');
+
+  // 2. Test Scrolling to line 20 (H3 Sub 2.1)
+  scroller.scrollTop = 20 * 20; // 400
+  scroller.dispatch('scroll');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), true, 'H3 Sub 1.1 collapsed after scroll to line 20');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), true, 'H4 Sub 1.1.1 collapsed after scroll to line 20');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), false, 'H3 Sub 2.1 expanded after scroll to line 20');
+
+  // 3. Test Clicking on H2 Section 1 (index 1)
+  dashes[1].dispatch('click');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), false, 'H3 Sub 1.1 expanded when in Sec 1');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), false, 'H4 Sub 1.1.1 expanded when in Sec 1');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true, 'H3 Sub 2.1 stays collapsed');
+
+  // 4. Test Clicking on H4 Sub 1.1.1 (index 3)
+  dashes[3].dispatch('click');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), false, 'H3 Sub 1.1 stays expanded');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), false, 'H4 Sub 1.1.1 stays expanded');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), true, 'H3 Sub 2.1 stays collapsed');
+
+  // 5. Test Clicking on H2 Section 2 (index 4)
+  dashes[4].dispatch('click');
+  assert.equal(dashes[2].classList.contains('is-collapsed'), true, 'H3 Sub 1.1 collapsed when Sec 2 active');
+  assert.equal(dashes[3].classList.contains('is-collapsed'), true, 'H4 Sub 1.1.1 collapsed when Sec 2 active');
+  assert.equal(dashes[5].classList.contains('is-collapsed'), false, 'H3 Sub 2.1 expanded when Sec 2 active');
+});
+
+test('updateHierarchyFolding handles direct H3s under H1 and standalone deep headings', () => {
+  const ChapterPipelinePlugin = require('./main.js');
+  const updateHierarchyFolding = ChapterPipelinePlugin.updateHierarchyFolding;
+  assert.ok(typeof updateHierarchyFolding === 'function', 'updateHierarchyFolding helper should exist');
+
+  const chapters = [
+    { title: 'H1 Main', level: 1 },
+    { title: 'H3 Direct Child', level: 3 },
+    { title: 'H3 Another Direct', level: 3 },
+    { title: 'H1 Second', level: 1 },
+    { title: 'H3 Under Second', level: 3 }
+  ];
+
+  const createMockElements = () => chapters.map(() => new FakeElement({ classes: ['codex-dash-item'] }));
+
+  // Test active-branch with activeIdx = 0 (H1 Main)
+  let dashEls = createMockElements();
+  updateHierarchyFolding(chapters, dashEls, 0, 'active-branch');
+  assert.equal(dashEls[0].classList.contains('is-collapsed'), false);
+  assert.equal(dashEls[1].classList.contains('is-collapsed'), false, 'direct H3 under H1 Main should expand');
+  assert.equal(dashEls[2].classList.contains('is-collapsed'), false, 'direct H3 under H1 Main should expand');
+  assert.equal(dashEls[3].classList.contains('is-collapsed'), false);
+  assert.equal(dashEls[4].classList.contains('is-collapsed'), true, 'H3 under second H1 should collapse');
+
+  // Test active-branch with activeIdx = 4 (H3 Under Second)
+  dashEls = createMockElements();
+  updateHierarchyFolding(chapters, dashEls, 4, 'active-branch');
+  assert.equal(dashEls[1].classList.contains('is-collapsed'), true, 'H3 under first H1 should collapse');
+  assert.equal(dashEls[2].classList.contains('is-collapsed'), true, 'H3 under first H1 should collapse');
+  assert.equal(dashEls[4].classList.contains('is-collapsed'), false, 'H3 under second H1 should expand');
+});
+

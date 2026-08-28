@@ -93,7 +93,37 @@
   align-items: center;
   padding: 3px 4px;
   min-height: 10px;
+  max-height: 24px;
   cursor: pointer;
+  pointer-events: auto;
+  transition: max-height 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              min-height 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              margin 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 折叠与层级聚焦模式 (Dynamic Hierarchy Focus & Folding) */
+.codex-dash-item.is-collapsed {
+  max-height: 0;
+  min-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Focus 模式：悬停导轨时平滑展开深层子标题 */
+.hierarchy-mode-hover-expand:hover .codex-dash-item.is-collapsed,
+.codex-stepper-container.hierarchy-mode-hover-expand:hover .codex-dash-item.is-collapsed,
+.codex-stepper-track.hierarchy-mode-hover-expand:hover .codex-dash-item.is-collapsed {
+  max-height: 24px;
+  min-height: 10px;
+  opacity: 0.55;
+  padding: 3px 4px;
   pointer-events: auto;
 }
 

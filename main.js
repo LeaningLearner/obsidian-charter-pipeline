@@ -317,6 +317,76 @@ class ChapterParser {
   }
 }
 
+function updateHierarchyFolding(chapters, dashElements, activeIdx, hierarchyMode) {
+  if (!chapters || !dashElements || dashElements.length === 0) return;
+  const mode = hierarchyMode || 'all';
+
+  if (mode === 'all') {
+    for (let i = 0; i < dashElements.length; i++) {
+      dashElements[i].classList.remove('is-collapsed');
+    }
+    return;
+  }
+
+  if (mode === 'hover-expand') {
+    for (let i = 0; i < dashElements.length; i++) {
+      const chap = chapters[i];
+      if (chap && chap.level >= 3) {
+        dashElements[i].classList.add('is-collapsed');
+      } else {
+        dashElements[i].classList.remove('is-collapsed');
+      }
+    }
+    return;
+  }
+
+  if (mode === 'active-branch') {
+    let branchStart = -1;
+    let branchEnd = -1;
+
+    if (activeIdx >= 0 && activeIdx < chapters.length) {
+      let parentIdx = activeIdx;
+      while (parentIdx >= 0 && chapters[parentIdx].level > 2) {
+        parentIdx--;
+      }
+
+      if (parentIdx >= 0) {
+        branchStart = parentIdx + 1;
+        branchEnd = chapters.length;
+        for (let i = parentIdx + 1; i < chapters.length; i++) {
+          if (chapters[i].level <= 2) {
+            branchEnd = i;
+            break;
+          }
+        }
+      } else {
+        branchStart = 0;
+        branchEnd = chapters.length;
+        for (let i = 0; i < chapters.length; i++) {
+          if (chapters[i].level <= 2) {
+            branchEnd = i;
+            break;
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < dashElements.length; i++) {
+      const chap = chapters[i];
+      if (chap && chap.level >= 3) {
+        const inActiveBranch = (i >= branchStart && i < branchEnd);
+        if (inActiveBranch) {
+          dashElements[i].classList.remove('is-collapsed');
+        } else {
+          dashElements[i].classList.add('is-collapsed');
+        }
+      } else {
+        dashElements[i].classList.remove('is-collapsed');
+      }
+    }
+  }
+}
+
 class ChapterSuggestModal extends SuggestModal {
   constructor(app, plugin, view, chapters) {
     super(app);
@@ -903,8 +973,11 @@ class ChapterPipelinePlugin extends Plugin {
     if (this.settings.dockPosition === 'right') {
       stepperContainer.classList.add('dock-right');
     }
+    const hierarchyMode = this.settings.hierarchyMode || 'all';
+    stepperContainer.classList.add(`hierarchy-mode-${hierarchyMode}`);
     stepperContainer.style.setProperty('--codex-active-color', this.settings.activeColor || '#3b82f6');
     const track = stepperContainer.createDiv({ cls: 'codex-stepper-track' });
+    track.classList.add(`hierarchy-mode-${hierarchyMode}`);
 
     let railEl = null;
     let railIndicator = null;
@@ -1084,6 +1157,7 @@ class ChapterPipelinePlugin extends Plugin {
 
         dashElements.forEach(d => d.classList.remove('active'));
         dashItem.classList.add('active');
+        updateHierarchyFolding(chapters, dashElements, i, this.settings.hierarchyMode);
         updateRailIndicator(i);
 
         // 触发清脆机械微动按键音
@@ -1136,6 +1210,7 @@ class ChapterPipelinePlugin extends Plugin {
         }
       });
 
+      updateHierarchyFolding(chapters, dashElements, activeIdx, this.settings.hierarchyMode);
       updateRailIndicator(activeIdx);
     };
 
@@ -1531,9 +1606,13 @@ class ChapterPipelinePlugin extends Plugin {
 ChapterPipelinePlugin.ChapterSuggestModal = ChapterSuggestModal;
 ChapterPipelinePlugin.ChapterParser = ChapterParser;
 ChapterPipelinePlugin.SoundEngine = SoundEngine;
+ChapterPipelinePlugin.updateHierarchyFolding = updateHierarchyFolding;
+ChapterPipelinePlugin.prototype.updateHierarchyFolding = updateHierarchyFolding;
 
 module.exports = ChapterPipelinePlugin;
 module.exports.default = ChapterPipelinePlugin;
 module.exports.ChapterSuggestModal = ChapterSuggestModal;
 module.exports.ChapterParser = ChapterParser;
 module.exports.SoundEngine = SoundEngine;
+module.exports.updateHierarchyFolding = updateHierarchyFolding;
+
