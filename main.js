@@ -610,23 +610,69 @@ class ChapterPipelinePlugin extends Plugin {
     // 2. 创建悬浮章节名独立气泡浮层（直接挂载到 document.body，采用全局屏幕坐标精准对齐）
     const floatingTooltip = document.body.createDiv({ cls: 'codex-floating-tooltip' });
 
-    // 3. 页面过窄自适应隐藏检测
-    const checkWidth = (width) => {
-      const threshold = this.settings.narrowThreshold || 600;
-      if (width < threshold) {
+    // 3. 动态留白空间感知与绝对防触碰正文计算
+    const updateGutterDimensions = () => {
+      const containerWidth = container.clientWidth || 0;
+      // 只有在视口极度狭窄（< 360px，如极小手机或超窄卡片分栏）时才隐藏，避免在普通分屏或打开双侧边栏时误隐藏
+      const threshold = Math.min(this.settings.narrowThreshold || 380, 380);
+
+      if (containerWidth > 0 && containerWidth < threshold) {
         stepperContainer.classList.add('is-narrow');
         floatingTooltip.classList.remove('is-visible');
-      } else {
-        stepperContainer.classList.remove('is-narrow');
+        return;
       }
+
+      stepperContainer.classList.remove('is-narrow');
+
+      // 寻找实际正文 Sizer（编辑视图 .cm-sizer 或阅读视图 .markdown-preview-sizer）
+      const sizer = container.querySelector('.cm-sizer') || container.querySelector('.markdown-preview-sizer');
+      let leftGutter = 0;
+
+      if (sizer && typeof sizer.getBoundingClientRect === 'function') {
+        const containerRect = typeof container.getBoundingClientRect === 'function' ? container.getBoundingClientRect() : { left: 0 };
+        const sizerRect = sizer.getBoundingClientRect();
+        leftGutter = Math.max(0, sizerRect.left - containerRect.left);
+      }
+
+      // 如果未探测到有效正文 Sizer（例如 0），基于容器宽度估算留白
+      if (leftGutter <= 0 && containerWidth > 0) {
+        leftGutter = Math.max(30, (containerWidth - 650) / 2);
+      }
+
+      // 留白越大横线越长（范围 16px ~ 38px，悬浮 22px ~ 44px）
+      const h1Width = Math.max(16, Math.min(38, Math.round(leftGutter * 0.35) || 18));
+      const h1Hover = Math.min(h1Width + 5, Math.max(20, (leftGutter > 30 ? leftGutter - 12 : 24)));
+
+      const w1 = h1Width;
+      const w2 = Math.max(9, Math.round(h1Width * 0.60));
+      const w3 = Math.max(5, Math.round(h1Width * 0.35));
+      const w4 = Math.max(3, Math.round(h1Width * 0.20));
+
+      const hw1 = h1Hover;
+      const hw2 = Math.max(12, Math.round(h1Hover * 0.65));
+      const hw3 = Math.max(8, Math.round(h1Hover * 0.45));
+      const hw4 = Math.max(4, Math.round(h1Hover * 0.25));
+
+      stepperContainer.style.setProperty('--dash-w1', `${w1}px`);
+      stepperContainer.style.setProperty('--dash-w2', `${w2}px`);
+      stepperContainer.style.setProperty('--dash-w3', `${w3}px`);
+      stepperContainer.style.setProperty('--dash-w4', `${w4}px`);
+
+      stepperContainer.style.setProperty('--dash-hover-w1', `${hw1}px`);
+      stepperContainer.style.setProperty('--dash-hover-w2', `${hw2}px`);
+      stepperContainer.style.setProperty('--dash-hover-w3', `${hw3}px`);
+      stepperContainer.style.setProperty('--dash-hover-w4', `${hw4}px`);
     };
 
-    checkWidth(container.clientWidth);
+    updateGutterDimensions();
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        checkWidth(entry.contentRect.width);
-      }
+    let resizeRaf = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        updateGutterDimensions();
+        resizeRaf = null;
+      });
     });
     resizeObserver.observe(container);
     this.observers.set(container, resizeObserver);
@@ -657,8 +703,15 @@ class ChapterPipelinePlugin extends Plugin {
 
         floatingTooltip.empty();
 
-        // 1. 标题区（加粗，固定宽度自动折行，支持行内公式）
-        const titleEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-title' });
+        // 1. 标题区（头部容器：Linear 风格微胶囊徽章 + 加粗标题，当前激活章节高亮，支持行内公式）
+        const headerEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-header' });
+        const isActive = dashItem.classList.contains('active');
+        const badgeCls = `codex-level-badge level-${Math.min(chap.level, 6)}${isActive ? ' is-active' : ''}`;
+        headerEl.createSpan({
+          cls: badgeCls,
+          text: `H${chap.level}`
+        });
+        const titleEl = headerEl.createDiv({ cls: 'codex-tooltip-title' });
         MarkdownRenderer.render(this.app, chap.title, titleEl, '', this);
 
         // 2. 正文 3 行纯文本摘要（支持 KaTeX 公式渲染，彻底过滤 Callout 容器）

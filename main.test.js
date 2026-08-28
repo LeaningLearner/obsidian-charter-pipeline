@@ -55,7 +55,11 @@ class FakeElement {
 
   createChild(tagName, options) {
     const classes = String(options.cls || '').split(/\s+/).filter(Boolean);
-    const child = new FakeElement({ tagName, classes });
+    const child = new FakeElement({
+      tagName,
+      classes,
+      textContent: options.text || options.textContent || ''
+    });
     for (const [name, value] of Object.entries(options.attr || {})) {
       child.setAttribute(name, value);
     }
@@ -452,4 +456,49 @@ test('Reading View navigation calls previewMode.applyScroll and setEphemeralStat
   assert.equal(ephemeralState?.subpath, '#2.4.1 脱帽法');
   assert.equal(ephemeralState?.line, 21);
 });
+
+test('chapter items render with level classes and mouseenter displays the Linear level badge', async () => {
+  const { container, plugin, view } = createReadingHarness();
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer);
+  assert.ok(stepperContainer.style.values.has('--dash-w1'));
+  assert.ok(stepperContainer.style.values.has('--dash-hover-w1'));
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashItems.length, 2);
+  assert.ok(dashItems[0].classList.contains('level-1'));
+  assert.ok(dashItems[1].classList.contains('level-2'));
+
+  // Test mouseenter on H1 item (active by default at scroll 0)
+  dashItems[0].dispatch('mouseenter');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip);
+  assert.ok(tooltip.classList.contains('is-visible'));
+
+  const badgeH1 = tooltip.querySelector('.codex-level-badge');
+  assert.ok(badgeH1);
+  assert.ok(badgeH1.classList.contains('level-1'));
+  assert.ok(badgeH1.classList.contains('is-active'));
+  assert.equal(badgeH1.textContent, 'H1');
+
+  // Test mouseenter on H2 item (not active)
+  dashItems[1].dispatch('mouseenter');
+  const badgeH2 = tooltip.querySelector('.codex-level-badge');
+  assert.ok(badgeH2);
+  assert.ok(badgeH2.classList.contains('level-2'));
+  assert.equal(badgeH2.classList.contains('is-active'), false);
+  assert.equal(badgeH2.textContent, 'H2');
+
+  // Switch active to H2 item and test mouseenter
+  dashItems[0].classList.remove('active');
+  dashItems[1].classList.add('active');
+  dashItems[1].dispatch('mouseenter');
+  const badgeH2Active = tooltip.querySelector('.codex-level-badge');
+  assert.ok(badgeH2Active);
+  assert.ok(badgeH2Active.classList.contains('is-active'));
+});
+
+
 
