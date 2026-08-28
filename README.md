@@ -114,7 +114,7 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | **Ignore First H1 (# Note Title)** (`ignoreFirstH1`) | When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections. | `Disabled (false)` |
 | **Dock Position** (`dockPosition`) | Choose whether to display the outline pipeline on the left or right margin of the note (`Left Margin`, `Right Margin`). | `Left Margin (left)` |
 | **Heading Hierarchy Mode** (`hierarchyMode`) | Control the display mode of subheadings: `All Headings Expanded` (all), `Focus Mode (Hover Expand)` (hover-expand), or `Active Branch Only` (active-branch). | `All Headings Expanded (all)` |
-| **Show Vertical Progress Rail** (`showProgressRail`) | Display a smooth magnetic vertical progress guide line indicating reading position. | `Enabled (true)` |
+| **Show Vertical Progress Rail** (`showProgressRail`) | Display a smooth magnetic vertical progress guide line indicating reading position. | `Disabled (false)` |
 | **Tooltip Glassmorphism & Spring Physics** (`tooltipGlassmorphism`) | Enable backdrop blur glassmorphism and spring overshoot animations for hover popovers. | `Enabled (true)` |
 | **Max Heading Level** (`maxHeadingLevel`) | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `H1 ~ H2 (Default)` |
 | **Active Indicator Color** (`activeColor`) | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
@@ -219,7 +219,7 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | **忽略文档首个一级大标题** (`ignoreFirstH1`) | 开启后，文章最开头的 `# 篇名` 不会生成横线，仅展示正文小节。 | `关闭 (false)` |
 | **靠栏停靠位置** (`dockPosition`) | 选择大纲横线流停靠在笔记编辑区的左侧或右侧边栏（`左侧边栏`、`右侧边栏`）。 | `左侧边栏 (left)` |
 | **多级标题展示模式** (`hierarchyMode`) | 控制 H3~H6 深层子小节的展示策略：`全部平铺展开 (all)`、`主干聚焦模式 (hover-expand)`、`当前分支聚焦 (active-branch)`。 | `全部平铺展开 (all)` |
-| **开启垂直进度导轨** (`showProgressRail`) | 在横线左侧显示一条极简平滑的垂直微光导轨，实时指示当前章节阅读进度。 | `开启 (true)` |
+| **开启垂直进度导轨** (`showProgressRail`) | 在横线左侧显示一条极简平滑的垂直微光导轨，实时指示当前章节阅读进度。 | `关闭 (false)` |
 | **毛玻璃质感与弹簧动效** (`tooltipGlassmorphism`) | 开启悬浮气泡毛玻璃模糊背景 (Backdrop Blur) 与拟物弹簧微动进场动效。 | `开启 (true)` |
 | **最大展示标题层级** (`maxHeadingLevel`) | 过滤更深层级的子小节（如选择 `H1 ~ H2` 则仅展示大纲，过滤 `H3 ~ H6`）。 | `仅 H1 ~ H2 (默认)` |
 | **激活高亮横线颜色** (`activeColor`) | 自定义当前阅读章节的横线加亮颜色（天青蓝、紫罗兰、琥珀、樱花粉、主题色）。 | `天青蓝 (#3b82f6)` |

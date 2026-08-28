@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS = {
   soundVolume: 50,
   dockPosition: 'left',
   hierarchyMode: 'all',
-  showProgressRail: true,
+  showProgressRail: false,
   tooltipGlassmorphism: true
 };
 
@@ -538,7 +538,7 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       .setDesc(t.showProgressRailDesc)
       .addToggle((toggle) =>
         toggle
-          .setValue(this.plugin.settings.showProgressRail !== false)
+          .setValue(this.plugin.settings.showProgressRail === true)
           .onChange(async (value) => {
             this.plugin.settings.showProgressRail = value;
             await this.plugin.saveSettings();
@@ -788,7 +788,7 @@ class ChapterPipelinePlugin extends Plugin {
       this.settings.hierarchyMode = 'all';
     }
     if (this.settings.showProgressRail === undefined) {
-      this.settings.showProgressRail = true;
+      this.settings.showProgressRail = false;
     }
     if (this.settings.tooltipGlassmorphism === undefined) {
       this.settings.tooltipGlassmorphism = true;
@@ -988,19 +988,12 @@ class ChapterPipelinePlugin extends Plugin {
 
     let railEl = null;
     let railIndicator = null;
-    if (this.settings.showProgressRail !== false) {
+    if (this.settings.showProgressRail === true) {
       railEl = track.createDiv({ cls: 'codex-progress-rail' });
       railIndicator = railEl.createDiv({ cls: 'codex-progress-indicator' });
     }
 
     const count = chapters.length;
-    let dynamicGap = 5;
-    if (count > 30) dynamicGap = 2;
-    else if (count > 20) dynamicGap = 3;
-    else if (count > 10) dynamicGap = 4;
-    else dynamicGap = 5;
-
-    track.style.gap = `${dynamicGap}px`;
 
     // 2. 创建悬浮章节名独立气泡浮层（直接挂载到 document.body，采用全局屏幕坐标精准对齐）
     const floatingTooltip = document.body.createDiv({ cls: 'codex-floating-tooltip' });
@@ -1061,6 +1054,34 @@ class ChapterPipelinePlugin extends Plugin {
       stepperContainer.style.setProperty('--dash-w2', `${w2}px`);
       stepperContainer.style.setProperty('--dash-w3', `${w3}px`);
       stepperContainer.style.setProperty('--dash-w4', `${w4}px`);
+
+      // 动态垂直空间感知与自适应紧凑度计算（防止大量章节或 hover 展开时超出视口）
+      const containerHeight = container.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 800);
+      const availableHeight = Math.max(100, containerHeight - 64);
+      const totalCount = count || 1;
+      const nominalItemHeight = 18;
+      let itemGap = 5;
+      let itemPaddingY = 3;
+      let itemMinHeight = 10;
+
+      if (totalCount * nominalItemHeight > availableHeight) {
+        const itemBudget = availableHeight / totalCount;
+        itemGap = Math.max(1, Math.min(3, Math.floor(itemBudget * 0.2)));
+        itemPaddingY = Math.max(0.5, Math.min(2.5, (itemBudget - itemGap - 4) / 2));
+        itemMinHeight = Math.max(3, Math.min(8, Math.floor(itemBudget - itemGap - itemPaddingY * 2)));
+      } else {
+        if (totalCount > 30) itemGap = 2;
+        else if (totalCount > 20) itemGap = 3;
+        else if (totalCount > 10) itemGap = 4;
+        else itemGap = 5;
+        itemPaddingY = 3;
+        itemMinHeight = 10;
+      }
+
+      stepperContainer.style.setProperty('--dash-item-gap', `${itemGap}px`);
+      stepperContainer.style.setProperty('--dash-item-padding-y', `${itemPaddingY}px`);
+      stepperContainer.style.setProperty('--dash-item-min-height', `${itemMinHeight}px`);
+      track.style.gap = `${itemGap}px`;
 
       stepperContainer.style.setProperty('--dash-hover-w1', `${hw1}px`);
       stepperContainer.style.setProperty('--dash-hover-w2', `${hw2}px`);
@@ -1130,7 +1151,13 @@ class ChapterPipelinePlugin extends Plugin {
           leftX = Math.min(winWidth - tooltipWidth - 10, itemRect.right + 12);
         }
 
-        floatingTooltip.style.top = `${centerY}px`;
+        const winHeight = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 800;
+        const tooltipHeight = floatingTooltip.offsetHeight || 140;
+        const minCenterY = tooltipHeight / 2 + 12;
+        const maxCenterY = winHeight - tooltipHeight / 2 - 12;
+        const clampedY = Math.max(minCenterY, Math.min(maxCenterY, centerY));
+
+        floatingTooltip.style.top = `${clampedY}px`;
         floatingTooltip.style.left = `${leftX}px`;
 
         floatingTooltip.empty();

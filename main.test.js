@@ -654,7 +654,7 @@ test('Settings load new default properties with backward compatibility', async (
   await plugin.loadSettings();
   assert.equal(plugin.settings.dockPosition, 'left');
   assert.equal(plugin.settings.hierarchyMode, 'all');
-  assert.equal(plugin.settings.showProgressRail, true);
+  assert.equal(plugin.settings.showProgressRail, false);
   assert.equal(plugin.settings.tooltipGlassmorphism, true);
 });
 
@@ -664,13 +664,13 @@ test('Settings load preserves existing custom values', async () => {
   plugin.loadData = async () => ({
     dockPosition: 'right',
     hierarchyMode: 'hover-expand',
-    showProgressRail: false,
+    showProgressRail: true,
     tooltipGlassmorphism: false,
   });
   await plugin.loadSettings();
   assert.equal(plugin.settings.dockPosition, 'right');
   assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
-  assert.equal(plugin.settings.showProgressRail, false);
+  assert.equal(plugin.settings.showProgressRail, true);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
 });
 
@@ -710,9 +710,9 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   const railSetting = Setting.instances.find(s => s.name.includes('Progress Rail') || s.name.includes('垂直进度导轨'));
   assert.ok(railSetting, 'showProgressRail toggle setting should be rendered');
   const railControl = railSetting.controls[0];
-  assert.equal(railControl.value, true);
-  await railControl.changeHandler(false);
-  assert.equal(plugin.settings.showProgressRail, false);
+  assert.equal(railControl.value, false);
+  await railControl.changeHandler(true);
+  assert.equal(plugin.settings.showProgressRail, true);
 
   // Find tooltipGlassmorphism toggle setting
   const glassSetting = Setting.instances.find(s => s.name.includes('Glassmorphism') || s.name.includes('毛玻璃'));
@@ -1271,6 +1271,56 @@ test('ChapterSuggestModal applies .codex-suggest-modal class to modalEl and rend
   modal.renderSuggestion(chapters[0], el);
   assert.equal(el.classList.contains('codex-suggest-item'), true, 'suggestion should have codex-suggest-item class');
   assert.equal(el.classList.contains('codex-modal-item'), true, 'suggestion should have codex-modal-item class');
+});
+
+test('vertical density scales gap, padding, and min-height when chapter count is large to prevent overflow', async () => {
+  const harness = createReadingHarness();
+  const { app, container, plugin, view } = harness;
+  container.clientHeight = 500; // Constrained view height
+
+  // Create 40 headings
+  const headings = [];
+  for (let i = 0; i < 40; i++) {
+    headings.push({ heading: `Heading ${i + 1}`, level: (i % 2 === 0 ? 1 : 2), position: { start: { line: i * 5 } } });
+  }
+  app.metadataCache.getFileCache = () => ({ headings });
+  plugin.settings.maxHeadingLevel = 6;
+
+  await plugin.attachStepperToView(view);
+
+  const stepperContainer = container.querySelector('.codex-stepper-container');
+  assert.ok(stepperContainer);
+  const gapStr = stepperContainer.style.getPropertyValue('--dash-item-gap');
+  const paddingYStr = stepperContainer.style.getPropertyValue('--dash-item-padding-y');
+  assert.ok(gapStr, 'gap variable should be defined');
+  assert.ok(paddingYStr, 'padding-y variable should be defined');
+  assert.ok(parseFloat(gapStr) <= 3, 'gap should be compressed for large count');
+  assert.ok(parseFloat(paddingYStr) <= 2.5, 'padding-y should be compressed for large count');
+});
+
+test('tooltip mouseenter clamps vertical center within viewport bounds', async () => {
+  const harness = createReadingHarness();
+  const { plugin, view, container } = harness;
+  global.window = { innerWidth: 1200, innerHeight: 600 };
+
+  await plugin.attachStepperToView(view);
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  assert.ok(dashItems.length > 0);
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(tooltip);
+
+  // Simulate item near top edge (top: -50px)
+  dashItems[0].rect = { top: -50, height: 10, left: 20, right: 40 };
+  dashItems[0].dispatch('mouseenter');
+  const topVal = parseFloat(tooltip.style.top);
+  assert.ok(topVal >= 70, `clamped tooltip top (${topVal}px) should not go below top bounds (~70px)`);
+
+  // Simulate item near bottom edge (top: 800px)
+  dashItems[0].rect = { top: 800, height: 10, left: 20, right: 40 };
+  dashItems[0].dispatch('mouseenter');
+  const bottomVal = parseFloat(tooltip.style.top);
+  assert.ok(bottomVal <= 530, `clamped tooltip top (${bottomVal}px) should not exceed bottom bounds (~530px)`);
 });
 
 
