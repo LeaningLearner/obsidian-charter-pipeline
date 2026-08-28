@@ -39,6 +39,16 @@ class FakeElement {
     };
   }
 
+  addClass(...names) {
+    this.classList.add(...names);
+    return this;
+  }
+
+  removeClass(...names) {
+    this.classList.remove(...names);
+    return this;
+  }
+
   append(child) {
     child.parentElement = this;
     this.children.push(child);
@@ -156,6 +166,7 @@ class ObsidianPlugin {
   constructor(app, manifest) {
     this.app = app;
     this.manifest = manifest;
+    this.commands = [];
   }
 
   async loadData() {
@@ -170,6 +181,11 @@ class ObsidianPlugin {
     this.settingTab = tab;
   }
 
+  addCommand(command) {
+    this.commands.push(command);
+    return command;
+  }
+
   registerEvent() {}
 }
 
@@ -180,6 +196,26 @@ class PluginSettingTab {
     this.app = app;
     this.plugin = plugin;
     this.containerEl = new FakeElement({ tagName: 'div' });
+  }
+}
+
+class SuggestModal {
+  constructor(app) {
+    this.app = app;
+    this.isOpen = false;
+    this.placeholder = '';
+  }
+
+  setPlaceholder(text) {
+    this.placeholder = text;
+  }
+
+  open() {
+    this.isOpen = true;
+  }
+
+  close() {
+    this.isOpen = false;
   }
 }
 
@@ -251,9 +287,19 @@ Module._load = function loadWithObsidianStub(request, parent, isMain) {
     return {
       Plugin: ObsidianPlugin,
       MarkdownView,
-      MarkdownRenderer: { render() {} },
+      MarkdownRenderer: {
+        render(app, markdown, el, path, component) {
+          if (el) {
+            el.textContent = markdown;
+            if (typeof el.createSpan === 'function') {
+              el.createSpan({ text: markdown });
+            }
+          }
+        }
+      },
       PluginSettingTab,
       Setting,
+      SuggestModal,
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -660,4 +706,132 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   await glassControl.changeHandler(false);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
 });
+
+test('ChapterSuggestModal provides items, search text, renders badge/title/excerpt, and handles selection with sound', () => {
+  const { app, plugin, view } = createReadingHarness();
+  let jumpedTo = null;
+  let clickedSoundVolume = null;
+  plugin.settings.enableSound = true;
+  plugin.settings.soundVolume = 60;
+  plugin.jumpToHeading = (v, chap) => { jumpedTo = { view: v, chap }; };
+  plugin.soundEngine.playClick = (vol) => { clickedSoundVolume = vol; };
+
+  const chapters = [
+    { title: 'Chapter 1', level: 1, line: 0, summaryMarkdown: 'First line excerpt' },
+    { title: 'Chapter 2', level: 2, line: 10, summaryMarkdown: '' }
+  ];
+
+  const ChapterSuggestModal = ChapterPipelinePlugin.ChapterSuggestModal;
+  assert.ok(ChapterSuggestModal, 'ChapterSuggestModal class should exist');
+
+  const modal = new ChapterSuggestModal(app, plugin, view, chapters);
+  assert.deepEqual(modal.getItems(), chapters);
+  assert.equal(modal.getItemText(chapters[0]), 'Chapter 1 First line excerpt');
+  assert.equal(modal.getItemText(chapters[1]), 'Chapter 2 ');
+
+  // Test renderSuggestion for item with excerpt
+  const el1 = new FakeElement();
+  modal.renderSuggestion(chapters[0], el1);
+  const badge1 = el1.querySelector('.codex-level-badge');
+  assert.ok(badge1, 'should render level badge');
+  assert.ok(badge1.classList.contains('level-1'));
+  assert.equal(badge1.textContent, 'H1');
+  const title1 = el1.querySelector('.codex-modal-title');
+  assert.ok(title1, 'should render title element');
+  assert.ok(title1.textContent.includes('Chapter 1'));
+  const excerpt1 = el1.querySelector('.codex-modal-excerpt');
+  assert.ok(excerpt1, 'should render excerpt element');
+  assert.ok(excerpt1.textContent.includes('First line excerpt'));
+
+  // Test renderSuggestion for item without excerpt
+  const el2 = new FakeElement();
+  modal.renderSuggestion(chapters[1], el2);
+  const excerpt2 = el2.querySelector('.codex-modal-excerpt');
+  assert.equal(excerpt2, null, 'should not render excerpt element if empty');
+
+  // Test onChooseItem
+  modal.onChooseItem(chapters[0]);
+  assert.deepEqual(jumpedTo, { view, chap: chapters[0] });
+  assert.equal(clickedSoundVolume, 60);
+});
+
+test('jumpToPreviousChapter and jumpToNextChapter navigate with sound feedback', async () => {
+  const { app, container, plugin, scroller, view } = createReadingHarness();
+  let clickedSoundVolume = null;
+  plugin.settings.enableSound = true;
+  plugin.settings.soundVolume = 45;
+  plugin.soundEngine.playClick = (vol) => { clickedSoundVolume = vol; };
+
+  // Currently at line 0 (chapter 0)
+  scroller.scrollTop = 0;
+
+  // Jump next: from chapter 0 (H1 at line 0) to chapter 1 (H2 at line 4)
+  await plugin.jumpToNextChapter(view);
+  assert.equal(scroller.lastScrollTo?.top, 300);
+  assert.equal(clickedSoundVolume, 45);
+
+  // Jump next again at last chapter (stays at chapter 1)
+  clickedSoundVolume = null;
+  scroller.scrollTop = 300;
+  await plugin.jumpToNextChapter(view);
+  assert.equal(scroller.lastScrollTo?.top, 300);
+  assert.equal(clickedSoundVolume, 45);
+
+  // Jump prev: from chapter 1 back to chapter 0
+  clickedSoundVolume = null;
+  await plugin.jumpToPreviousChapter(view);
+  assert.equal(scroller.lastScrollTo?.top, 60);
+  assert.equal(clickedSoundVolume, 45);
+});
+
+test('openChapterPalette extracts chapters and opens ChapterSuggestModal', async () => {
+  const { app, plugin, view } = createReadingHarness();
+  const modal = await plugin.openChapterPalette(view);
+
+  assert.ok(modal, 'openChapterPalette should return the modal instance');
+  assert.equal(modal.isOpen, true);
+  assert.equal(modal.getItems().length, 2);
+});
+
+test('onload registers jump-prev, jump-next, and open-palette commands', async () => {
+  const { app } = createReadingHarness();
+  app.workspace.on = () => {};
+  app.workspace.onLayoutReady = () => {};
+  app.metadataCache = { on: () => {} };
+  const plugin = new ChapterPipelinePlugin(app, {});
+  await plugin.onload();
+
+  const prevCmd = plugin.commands.find(c => c.id === 'charter-pipeline-jump-prev');
+  assert.ok(prevCmd, 'jump-prev command should be registered');
+  assert.equal(prevCmd.name, 'Charter Pipeline: Jump to previous chapter');
+
+  const nextCmd = plugin.commands.find(c => c.id === 'charter-pipeline-jump-next');
+  assert.ok(nextCmd, 'jump-next command should be registered');
+  assert.equal(nextCmd.name, 'Charter Pipeline: Jump to next chapter');
+
+  const paletteCmd = plugin.commands.find(c => c.id === 'charter-pipeline-open-palette');
+  assert.ok(paletteCmd, 'open-palette command should be registered');
+  assert.equal(paletteCmd.name, 'Charter Pipeline: Search & switch chapter (Palette)');
+
+  // Verify command execution
+  let prevCalled = false;
+  let nextCalled = false;
+  let paletteCalled = false;
+  plugin.jumpToPreviousChapter = () => { prevCalled = true; };
+  plugin.jumpToNextChapter = () => { nextCalled = true; };
+  plugin.openChapterPalette = () => { paletteCalled = true; };
+
+  assert.equal(prevCmd.checkCallback(true), true);
+  prevCmd.checkCallback(false);
+  assert.equal(prevCalled, true);
+
+  assert.equal(nextCmd.checkCallback(true), true);
+  nextCmd.checkCallback(false);
+  assert.equal(nextCalled, true);
+
+  assert.equal(paletteCmd.checkCallback(true), true);
+  paletteCmd.checkCallback(false);
+  assert.equal(paletteCalled, true);
+});
+
 

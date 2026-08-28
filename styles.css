@@ -323,3 +323,50 @@ body .workspace-leaf .mod-highlighted {
   background: transparent;
   box-shadow: none;
 }
+
+/* ========================================================
+   Chapter Suggest Modal / Quick Switcher Palette Styles
+   ======================================================== */
+
+.suggestion-item.codex-suggest-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.codex-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codex-modal-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-normal);
+  line-height: 1.4;
+}
+
+.codex-modal-title p {
+  margin: 0;
+  display: inline;
+}
+
+.codex-modal-excerpt {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-left: 32px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.codex-modal-excerpt p {
+  margin: 0;
+  display: inline;
+}
+

@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting } = require('obsidian');
+const { Plugin, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting, SuggestModal } = require('obsidian');
 
 const DEFAULT_SETTINGS = {
   minHeadingLevel: 1,
@@ -317,6 +317,72 @@ class ChapterParser {
   }
 }
 
+class ChapterSuggestModal extends SuggestModal {
+  constructor(app, plugin, view, chapters) {
+    super(app);
+    this.plugin = plugin;
+    this.view = view;
+    this.chapters = chapters || [];
+    if (typeof this.setPlaceholder === 'function') {
+      this.setPlaceholder('Search chapter or formula...');
+    }
+  }
+
+  getItems() {
+    return this.chapters;
+  }
+
+  getItemText(item) {
+    return (item.title || '') + ' ' + (item.summaryMarkdown || '');
+  }
+
+  renderSuggestion(item, el) {
+    if (typeof el.empty === 'function') el.empty();
+    if (typeof el.addClass === 'function') {
+      el.addClass('codex-suggest-item');
+    } else if (el.classList && typeof el.classList.add === 'function') {
+      el.classList.add('codex-suggest-item');
+    }
+
+    const headerEl = (typeof el.createDiv === 'function')
+      ? el.createDiv({ cls: 'codex-modal-header' })
+      : el;
+
+    const badgeCls = `codex-level-badge level-${Math.min(item.level, 6)}`;
+    if (typeof headerEl.createSpan === 'function') {
+      headerEl.createSpan({
+        cls: badgeCls,
+        text: `H${item.level}`
+      });
+    }
+
+    const titleEl = (typeof headerEl.createDiv === 'function')
+      ? headerEl.createDiv({ cls: 'codex-modal-title' })
+      : null;
+    if (titleEl) {
+      MarkdownRenderer.render(this.app, item.title, titleEl, '', this.plugin);
+    }
+
+    if (this.plugin?.settings?.showExcerpt !== false && item.summaryMarkdown) {
+      const excerptEl = (typeof el.createDiv === 'function')
+        ? el.createDiv({ cls: 'codex-modal-excerpt' })
+        : null;
+      if (excerptEl) {
+        MarkdownRenderer.render(this.app, item.summaryMarkdown, excerptEl, '', this.plugin);
+      }
+    }
+  }
+
+  onChooseItem(item, evt) {
+    if (!item) return;
+    if (this.plugin?.settings?.enableSound !== false) {
+      const vol = this.plugin?.settings?.soundVolume !== undefined ? this.plugin.settings.soundVolume : 50;
+      this.plugin?.soundEngine?.playClick(vol);
+    }
+    this.plugin?.jumpToHeading(this.view, item);
+  }
+}
+
 class ChapterPipelineSettingTab extends PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -573,6 +639,52 @@ class ChapterPipelinePlugin extends Plugin {
       })
     );
 
+    // 注册快捷跳转与章节搜索命令
+    this.addCommand({
+      id: 'charter-pipeline-jump-prev',
+      name: 'Charter Pipeline: Jump to previous chapter',
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          if (!checking) {
+            this.jumpToPreviousChapter(view);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-jump-next',
+      name: 'Charter Pipeline: Jump to next chapter',
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          if (!checking) {
+            this.jumpToNextChapter(view);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-open-palette',
+      name: 'Charter Pipeline: Search & switch chapter (Palette)',
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          if (!checking) {
+            this.openChapterPalette(view);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
     this.app.workspace.onLayoutReady(() => {
       this.scheduleUpdateAllMarkdownViews();
     });
@@ -640,6 +752,114 @@ class ChapterPipelinePlugin extends Plugin {
     });
   }
 
+  extractChapters(content, file) {
+    const fileCache = this.app.metadataCache.getFileCache(file);
+    let headings = fileCache ? fileCache.headings || [] : [];
+
+    // 若缓存尚未就绪，使用正则极速从正文提取标题作为保底，确保任何模式百分百加载
+    if (!headings || headings.length === 0) {
+      headings = [];
+      const lines = content ? content.split(/\r?\n/) : [];
+      for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+          headings.push({
+            heading: match[2].trim(),
+            level: match[1].length,
+            position: {
+              start: { line: i, col: 0, offset: 0 },
+              end: { line: i, col: lines[i].length, offset: 0 }
+            }
+          });
+        }
+      }
+    }
+
+    return ChapterParser.parse(content, headings, this.settings);
+  }
+
+  async getChaptersForView(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView || !targetView.file) return [];
+
+    const file = targetView.file;
+    const content = await this.app.vault.cachedRead(file);
+    return this.extractChapters(content, file);
+  }
+
+  getActiveChapterIndex(view, chapters) {
+    if (!chapters || chapters.length === 0) return -1;
+    const container = view?.contentEl;
+    const currentLine = this.getCurrentEditorTopLine(view, container, chapters);
+    let activeIdx = 0;
+    for (let i = 0; i < chapters.length; i++) {
+      if (chapters[i].line <= currentLine + 2) {
+        activeIdx = i;
+      } else {
+        break;
+      }
+    }
+    return activeIdx;
+  }
+
+  async jumpToPreviousChapter(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView) return;
+
+    const chapters = await this.getChaptersForView(targetView);
+    if (!chapters || chapters.length === 0) return;
+
+    const activeIdx = this.getActiveChapterIndex(targetView, chapters);
+    const prevIdx = Math.max(0, activeIdx - 1);
+    const targetChapter = chapters[prevIdx];
+    if (targetChapter) {
+      if (this.settings.enableSound !== false) {
+        const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+        this.soundEngine.playClick(vol);
+      }
+      this.jumpToHeading(targetView, targetChapter);
+    }
+  }
+
+  async jumpToNextChapter(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView) return;
+
+    const chapters = await this.getChaptersForView(targetView);
+    if (!chapters || chapters.length === 0) return;
+
+    const activeIdx = this.getActiveChapterIndex(targetView, chapters);
+    const nextIdx = Math.min(chapters.length - 1, activeIdx + 1);
+    const targetChapter = chapters[nextIdx];
+    if (targetChapter) {
+      if (this.settings.enableSound !== false) {
+        const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+        this.soundEngine.playClick(vol);
+      }
+      this.jumpToHeading(targetView, targetChapter);
+    }
+  }
+
+  async openChapterPalette(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView) return null;
+
+    const chapters = await this.getChaptersForView(targetView);
+    if (!chapters || chapters.length === 0) return null;
+
+    const modal = new ChapterSuggestModal(this.app, this, targetView, chapters);
+    modal.open();
+    return modal;
+  }
+
   async attachStepperToView(view) {
     if (!view || !view.file) return;
 
@@ -675,30 +895,7 @@ class ChapterPipelinePlugin extends Plugin {
     if (this.renderVersions.get(view) !== renderVersion) {
       return;
     }
-
-    const fileCache = this.app.metadataCache.getFileCache(file);
-    let headings = fileCache ? fileCache.headings || [] : [];
-
-    // 若缓存尚未就绪，使用正则极速从正文提取标题作为保底，确保任何模式百分百加载
-    if (!headings || headings.length === 0) {
-      headings = [];
-      const lines = content ? content.split(/\r?\n/) : [];
-      for (let i = 0; i < lines.length; i++) {
-        const match = lines[i].match(/^(#{1,6})\s+(.+)$/);
-        if (match) {
-          headings.push({
-            heading: match[2].trim(),
-            level: match[1].length,
-            position: {
-              start: { line: i, col: 0, offset: 0 },
-              end: { line: i, col: lines[i].length, offset: 0 }
-            }
-          });
-        }
-      }
-    }
-
-    const chapters = ChapterParser.parse(content, headings, this.settings);
+    const chapters = this.extractChapters(content, file);
     if (chapters.length === 0) return;
 
     // 1. 创建散落横线容器
@@ -1279,5 +1476,12 @@ class ChapterPipelinePlugin extends Plugin {
   }
 }
 
+ChapterPipelinePlugin.ChapterSuggestModal = ChapterSuggestModal;
+ChapterPipelinePlugin.ChapterParser = ChapterParser;
+ChapterPipelinePlugin.SoundEngine = SoundEngine;
+
 module.exports = ChapterPipelinePlugin;
 module.exports.default = ChapterPipelinePlugin;
+module.exports.ChapterSuggestModal = ChapterSuggestModal;
+module.exports.ChapterParser = ChapterParser;
+module.exports.SoundEngine = SoundEngine;
