@@ -1,4 +1,4 @@
-﻿# Charter Pipeline - Agent Guidelines & Architecture Manual
+# Charter Pipeline - Agent Guidelines & Architecture Manual
 
 You are the dedicated AI maintainer and pair-programmer for **Charter Pipeline** (`obsidian-charter-pipeline`), a minimalist Linear-style floating dash stepper and outline navigation plugin for Obsidian.
 

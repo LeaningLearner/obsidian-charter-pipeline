@@ -1323,4 +1323,31 @@ test('tooltip mouseenter clamps vertical center within viewport bounds', async (
   assert.ok(bottomVal <= 530, `clamped tooltip top (${bottomVal}px) should not exceed bottom bounds (~530px)`);
 });
 
+test('tooltip and modal escape numbered list headings to keep titles compact', async () => {
+  const harness = createReadingHarness();
+  const { app, plugin, view, container } = harness;
+
+  app.vault.cachedRead = async () => '# Title\n\n## 1. First Section\nContent 1\n\n### 2.1 Sub Section\nContent 2\n';
+  app.metadataCache.getFileCache = () => ({
+    headings: [
+      { heading: 'Title', level: 1, position: { start: { line: 0 } } },
+      { heading: '1. First Section', level: 2, position: { start: { line: 2 } } },
+      { heading: '2.1 Sub Section', level: 3, position: { start: { line: 5 } } },
+    ],
+  });
+
+  await plugin.attachStepperToView(view);
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+
+  assert.ok(dashItems.length >= 3);
+  dashItems[1].dispatch('mouseenter');
+
+  const titleEl = tooltip.querySelector('.codex-tooltip-title');
+  assert.ok(titleEl);
+  assert.equal(titleEl.textContent, '1\\. First Section', 'numbered heading should escape period to prevent <ol> list indentation');
+});
+
+
 

@@ -437,7 +437,7 @@ class ChapterSuggestModal extends SuggestModal {
       ? headerEl.createDiv({ cls: 'codex-modal-title' })
       : null;
     if (titleEl) {
-      MarkdownRenderer.render(this.app, item.title, titleEl, '', this.plugin);
+      MarkdownRenderer.render(this.app, formatTitleForRender(item.title), titleEl, '', this.plugin);
     }
 
     if (this.plugin?.settings?.showExcerpt !== false && item.summaryMarkdown) {
@@ -637,6 +637,14 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
   }
+}
+
+function formatTitleForRender(title) {
+  if (!title) return '';
+  return String(title)
+    .replace(/^(\s*\d+)\.\s+/g, '$1\\. ')
+    .replace(/^(\s*\d+)\)\s+/g, '$1\\) ')
+    .replace(/^(\s*[-*+])\s+/g, '\\$1 ');
 }
 
 function normalizeHeadingText(text) {
@@ -1171,7 +1179,7 @@ class ChapterPipelinePlugin extends Plugin {
           text: `H${chap.level}`
         });
         const titleEl = headerEl.createDiv({ cls: 'codex-tooltip-title' });
-        MarkdownRenderer.render(this.app, chap.title, titleEl, '', this);
+        MarkdownRenderer.render(this.app, formatTitleForRender(chap.title), titleEl, '', this);
 
         // 2. 正文 3 行纯文本摘要（支持 KaTeX 公式渲染，彻底过滤 Callout 容器）
         if (this.settings.showExcerpt !== false && chap.summaryMarkdown) {
