@@ -36,6 +36,12 @@
 
 Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, **tactile micro-switch feedback**, and **rock-solid pinned-top navigation** across both Editing and Reading views, navigating long technical notes, research, documentation, and study material becomes effortless.
 
+### 🆕 v1.1.2 Highlights
+
+- **Reading Progress & Bookmarks** is now available as an optional, local-only feature: save a chapter resume point and mark any chapter as **Revisit** or **Important** without changing your Markdown.
+- The UI now follows Obsidian automatically: `zh*` uses Simplified Chinese, while all other languages use English. Settings, commands, search, bookmark menus, and notices are included.
+- Active chapter highlighting now follows the actual Reading View or Live Preview scroll container, preventing the highlight from remaining on the opening chapter after you scroll.
+
 ---
 
 ### ✨ Key Features
@@ -151,6 +157,12 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 **Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了 **Linear 的极简散落横线步进流** 美学。
 
 区别于传统占用大量屏幕空间的臃肿侧边栏目录或信息杂乱的代码小地图，Charter Pipeline 在笔记左侧边缘渲染一列**纯净散落的悬浮横线条**。通过精巧的长短区分（H1~H6）、**支持 KaTeX 数学公式渲染的 3 行气泡卡片**、**清脆微动开关物理音效**、以及**编辑/阅读双模式像素级绝对置顶平滑跳转**，让长文浏览与章节检索变得优雅而极速。
+
+### 🆕 v1.1.2 更新
+
+- 新增可选的**阅读断点与章节书签**：本地保存章节断点，并为任意章节叠加“**稍后回看**”与“**重点**”书签；全程不修改 Markdown。
+- 设置页、命令、搜索框、书签菜单和提示现可自动跟随 Obsidian 语言：`zh*` 使用简体中文，其他语言使用英文。
+- 修复阅读视图与实时预览中，滚动后激活高亮仍停留在首章的问题；现在会跟随实际滚动容器与当前可见章节更新。
 
 ---
 
