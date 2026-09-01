@@ -34,7 +34,7 @@
 
 **Charter Pipeline** brings the sleek, ultra-minimalist timeline navigation of **Linear** directly into Obsidian. 
 
-Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, **tactile micro-switch feedback**, and **rock-solid pinned-top navigation** across both Editing and Reading views, navigating complex math and study notes has never been more effortless.
+Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, **tactile micro-switch feedback**, and **rock-solid pinned-top navigation** across both Editing and Reading views, navigating long technical notes, research, documentation, and study material becomes effortless.
 
 ---
 
@@ -55,6 +55,10 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
 - 📏 **Vertical Progress Rail & Active Indicator**:
   - Optional subtle magnetic vertical guide line indicating your exact reading progress through the document's structure.
   - Smoothly tracking indicator reflecting the currently active section.
+- 🔖 **Reading Progress & Bookmarks (Optional)**:
+  - Save a chapter-level reading resume point for any long note; reopening the note shows a quiet, non-blocking reminder and never scrolls automatically.
+  - Right-click a dash to mark a section for **Revisit** or as **Important**. The circle and diamond markers can be combined and are also described in the hover card.
+  - All resume points and bookmarks stay in local plugin data, never in your Markdown or Frontmatter. The feature is disabled by default.
 - 💬 **KaTeX Hover Tooltip & 3-Line Excerpt**:
   - Instant floating card centered pixel-perfect on the hovered dash line.
   - Bold wrapped chapter title + unbolded 3-line excerpt from section content.
@@ -74,9 +78,9 @@ Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipe
   - Zero frame drops and zero CPU overhead even on 10,000-line math notes.
 - 📱 **Split-Screen & Narrow View Auto-Hide**:
   - Automatically fades out when pane width is narrow (e.g. split-screen with PDF notes) so it never clashes with your text.
-- ⚙️ **Bilingual Settings Panel**:
-  - English by default with automatic Chinese localization support.
-  - Fine-grained controls for excerpt preview, heading levels, dock position, hierarchy mode, progress rail, glassmorphism, active colors, and sound effects.
+- ⚙️ **Automatic English / Chinese Interface**:
+  - Settings, search, commands, bookmark menus, and notices automatically follow Obsidian's language: Chinese for `zh*`, English otherwise.
+  - Fine-grained controls for excerpt preview, heading levels, dock position, hierarchy mode, progress rail, reading bookmarks, glassmorphism, active colors, and sound effects.
 
 ---
 
@@ -89,6 +93,10 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | `charter-pipeline-jump-prev` | **Charter Pipeline: Jump to previous chapter** | Navigate directly to the previous heading with pinned-top landing. |
 | `charter-pipeline-jump-next` | **Charter Pipeline: Jump to next chapter** | Navigate directly to the next heading with pinned-top landing. |
 | `charter-pipeline-open-palette` | **Charter Pipeline: Search & switch chapter (Palette)** | Open a fuzzy search modal with chapter titles, badges, and formula excerpts. |
+| `charter-pipeline-resume-last-chapter` | **Charter Pipeline: Resume last chapter** | Return to this note's saved chapter-level reading position. |
+| `charter-pipeline-toggle-revisit-current` | **Charter Pipeline: Toggle revisit bookmark for current chapter** | Add or remove the current chapter's Revisit bookmark. |
+| `charter-pipeline-toggle-important-current` | **Charter Pipeline: Toggle important bookmark for current chapter** | Add or remove the current chapter's Important bookmark. |
+| `charter-pipeline-clear-reading-bookmarks-current` | **Charter Pipeline: Clear reading progress & bookmarks for current note** | Remove this note's saved resume point and all chapter bookmarks. |
 
 ---
 
@@ -115,6 +123,7 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | **Dock Position** (`dockPosition`) | Choose whether to display the outline pipeline on the left or right margin of the note (`Left Margin`, `Right Margin`). | `Left Margin (left)` |
 | **Heading Hierarchy Mode** (`hierarchyMode`) | Control the display mode of subheadings: `Focus Mode (Hover Expand)` (hover-expand), `All Headings Expanded` (all), or `Active Branch Only` (active-branch). | `Focus Mode (hover-expand)` |
 | **Show Vertical Progress Rail** (`showProgressRail`) | Display a smooth magnetic vertical progress guide line indicating reading position. | `Disabled (false)` |
+| **Enable Reading Progress & Bookmarks** (`readingBookmarksEnabled`) | Save a reading resume point and optional Revisit / Important chapter bookmarks in local plugin data. Markdown and Frontmatter are never modified. | `Disabled (false)` |
 | **Tooltip Glassmorphism & Spring Physics** (`tooltipGlassmorphism`) | Enable backdrop blur glassmorphism and spring overshoot animations for hover popovers. | `Enabled (true)` |
 | **Max Heading Level** (`maxHeadingLevel`) | Filter deeper subheadings (`H1 ~ H2`, `H1 ~ H3`, `H1 ~ H4`, `All H1 ~ H6`). | `H1 ~ H2 (Default)` |
 | **Active Indicator Color** (`activeColor`) | Customize the highlight color for the currently active reading section (`Azure Blue`, `Violet`, `Sunset Amber`, `Sakura Pink`, `Theme Accent`). | `Azure Blue (#3b82f6)` |
@@ -161,6 +170,10 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
   - **当前分支聚焦（active-branch）**：智能跟随阅读进度，仅动态展开当前正在阅读的章节分支，自动折叠其余分支。
 - 📏 **垂直微光进度导轨（Progress Rail）**：
   - 可选极简微光垂直导轨线，配合磁吸小圆点/光标实时指示整篇笔记的阅读进度。
+- 🔖 **通用阅读断点与章节书签（可选）**：
+  - 为任意长笔记保存章节级阅读断点；再次打开时只显示安静、非阻塞的提示，绝不会自动滚动打断阅读。
+  - 右键点击横线即可添加“**稍后回看**”或“**重点**”书签。圆点与菱形可叠加显示，并会在悬浮卡中以文字说明。
+  - 断点与书签只保存在本地插件数据中，不会写入 Markdown 或 Frontmatter；该功能默认关闭。
 - 💬 **3 行 KaTeX 公式气泡与几何中心对齐**：
   - 悬浮横线即刻浮现独立气泡，**垂直正中心 100% 精准对齐短横线**；
   - 顶部为加粗且自动换行的章节名，下方为**浅色未加粗的 3 行正文摘要**；
@@ -179,9 +192,9 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
   - 翻阅上万字、上百公式的长篇数学笔记时，依然保持 **0 掉帧、0 CPU 负担**。
 - 📱 **分屏与窄屏自适应隐藏**：
   - 左边写笔记、右边开 PDF 双拼时，自动感应宽度并智能隐去，绝不遮挡正文内容。
-- ⚙️ **中英双语设置面板**：
-  - 默认英文，并智能自适应中文系统语言；
-  - 支持摘要预览、展示层级、左右停靠、折叠模式、进度导轨、毛玻璃动效、高亮色系与音效微调。
+- ⚙️ **中英文界面自动切换**：
+  - 设置页、搜索框、命令、书签菜单与提示会自动跟随 Obsidian 语言；`zh*` 显示中文，其余语言显示英文。
+  - 支持摘要预览、展示层级、左右停靠、折叠模式、进度导轨、阅读书签、毛玻璃动效、高亮色系与音效微调。
 
 ---
 
@@ -194,6 +207,10 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | `charter-pipeline-jump-prev` | **Charter Pipeline: Jump to previous chapter** (跳转至上一章节) | 平滑滚动并绝对置顶跳转至上一个标题。 |
 | `charter-pipeline-jump-next` | **Charter Pipeline: Jump to next chapter** (跳转至下一章节) | 平滑滚动并绝对置顶跳转至下一个标题。 |
 | `charter-pipeline-open-palette` | **Charter Pipeline: Search & switch chapter (Palette)** (搜索并快速跳转章节) | 弹出快速搜索面板，支持模糊检索章节、展示公式摘要并直达目标。 |
+| `charter-pipeline-resume-last-chapter` | **Charter Pipeline: Resume last chapter** (恢复上次阅读章节) | 跳转回本笔记保存的章节级阅读位置。 |
+| `charter-pipeline-toggle-revisit-current` | **Charter Pipeline: Toggle revisit bookmark for current chapter** (切换当前章节的稍后回看书签) | 添加或移除当前章节的“稍后回看”书签。 |
+| `charter-pipeline-toggle-important-current` | **Charter Pipeline: Toggle important bookmark for current chapter** (切换当前章节的重点书签) | 添加或移除当前章节的“重点”书签。 |
+| `charter-pipeline-clear-reading-bookmarks-current` | **Charter Pipeline: Clear reading progress & bookmarks for current note** (清除当前笔记的阅读断点与书签) | 删除本笔记的断点及所有章节书签。 |
 
 ---
 
@@ -220,6 +237,7 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 | **靠栏停靠位置** (`dockPosition`) | 选择大纲横线流停靠在笔记编辑区的左侧或右侧边栏（`左侧边栏`、`右侧边栏`）。 | `左侧边栏 (left)` |
 | **多级标题展示模式** (`hierarchyMode`) | 控制 H3~H6 深层子小节的展示策略：`主干聚焦模式 (hover-expand)`、`全部平铺展开 (all)`、`当前分支聚焦 (active-branch)`。 | `主干聚焦模式 (hover-expand)` |
 | **开启垂直进度导轨** (`showProgressRail`) | 在横线左侧显示一条极简平滑的垂直微光导轨，实时指示当前章节阅读进度。 | `关闭 (false)` |
+| **开启阅读断点与章节书签** (`readingBookmarksEnabled`) | 将章节断点及“稍后回看 / 重点”书签保存在本地插件数据中；不会修改 Markdown 或 Frontmatter。 | `关闭 (false)` |
 | **毛玻璃质感与弹簧动效** (`tooltipGlassmorphism`) | 开启悬浮气泡毛玻璃模糊背景 (Backdrop Blur) 与拟物弹簧微动进场动效。 | `开启 (true)` |
 | **最大展示标题层级** (`maxHeadingLevel`) | 过滤更深层级的子小节（如选择 `H1 ~ H2` 则仅展示大纲，过滤 `H3 ~ H6`）。 | `仅 H1 ~ H2 (默认)` |
 | **激活高亮横线颜色** (`activeColor`) | 自定义当前阅读章节的横线加亮颜色（天青蓝、紫罗兰、琥珀、樱花粉、主题色）。 | `天青蓝 (#3b82f6)` |

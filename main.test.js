@@ -126,9 +126,14 @@ class FakeElement {
     else this.listeners.delete(type);
   }
 
-  dispatch(type) {
+  dispatch(type, event = {}) {
+    const syntheticEvent = {
+      stopPropagation() {},
+      preventDefault() {},
+      ...event,
+    };
     for (const handler of this.listeners.get(type) || []) {
-      handler({ stopPropagation() {} });
+      handler(syntheticEvent);
     }
   }
 
@@ -235,6 +240,42 @@ class SuggestModal {
   }
 }
 
+class Menu {
+  static instances = [];
+
+  constructor() {
+    this.items = [];
+    this.event = null;
+    Menu.instances.push(this);
+  }
+
+  addItem(callback) {
+    const item = {
+      title: '',
+      clickHandler: null,
+      setTitle: (title) => { item.title = title; return item; },
+      onClick: (handler) => { item.clickHandler = handler; return item; },
+    };
+    callback(item);
+    this.items.push(item);
+    return this;
+  }
+
+  showAtMouseEvent(event) {
+    this.event = event;
+  }
+}
+
+class Notice {
+  static instances = [];
+
+  constructor(message, timeout) {
+    this.message = message;
+    this.timeout = timeout;
+    Notice.instances.push(this);
+  }
+}
+
 class Setting {
   static instances = [];
 
@@ -316,6 +357,8 @@ Module._load = function loadWithObsidianStub(request, parent, isMain) {
       PluginSettingTab,
       Setting,
       SuggestModal,
+      Menu,
+      Notice,
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -326,6 +369,13 @@ Module._load = originalLoad;
 function createReadingHarness() {
   const body = new FakeElement();
   global.document = { body };
+  global.window = {
+    innerWidth: 1200,
+    innerHeight: 800,
+    localStorage: { getItem: () => 'en' },
+  };
+  Menu.instances = [];
+  Notice.instances = [];
   global.ResizeObserver = class ResizeObserver {
     observe() {}
     disconnect() {}
@@ -369,8 +419,15 @@ function createReadingHarness() {
   view.contentEl = container;
   view.getMode = () => 'preview';
 
+  const vaultEvents = new Map();
   const app = {
-    vault: { cachedRead: async () => '# First\nbody\nbody\nbody\n## Second\nbody' },
+    vault: {
+      cachedRead: async () => '# First\nbody\nbody\nbody\n## Second\nbody',
+      on: (eventName, handler) => {
+        vaultEvents.set(eventName, handler);
+        return { eventName, handler };
+      },
+    },
     metadataCache: {
       getFileCache: () => ({
         headings: [
@@ -395,7 +452,7 @@ function createReadingHarness() {
 
   app.workspace.getLeavesOfType = () => [{ view }];
 
-  return { app, container, firstHeading, plugin, scroller, secondHeading, sourceScroller, view };
+  return { app, container, firstHeading, plugin, scroller, secondHeading, sourceScroller, vaultEvents, view };
 }
 
 test('Reading View renders the chapter pipeline and tracks its visible scroll container', async () => {
@@ -426,6 +483,64 @@ test('Reading View active tracking ignores the hidden editor state', () => {
   ];
 
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+});
+
+test('Reading View tracks the scroll-owning parent when Obsidian moves scrolling outside the preview', async () => {
+  const { container, firstHeading, plugin, scroller, secondHeading, view } = createReadingHarness();
+  const outerScroller = new FakeElement({
+    classes: ['view-content'],
+    rect: { top: 100, left: 250, right: 1000, height: 650 },
+  });
+  outerScroller.clientHeight = 650;
+  outerScroller.scrollHeight = 1600;
+  outerScroller.append(container);
+  firstHeading.rect.top = 80;
+  secondHeading.rect.top = 150;
+  scroller.scrollTop = 0;
+  const chapters = [
+    { line: 0, headingIndex: 0 },
+    { line: 4, headingIndex: 1 },
+  ];
+
+  assert.equal(plugin.getViewScroller(container, view), outerScroller);
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+
+  await plugin.attachStepperToView(view);
+  assert.equal(outerScroller.listeners.get('scroll')?.length, 1);
+  assert.equal(container.querySelectorAll('.codex-dash-item')[1].classList.contains('active'), true);
+});
+
+test('Live Preview active tracking uses the last visible heading instead of chapter zero', () => {
+  const { container, plugin, sourceScroller, view } = createReadingHarness();
+  view.getMode = () => 'source';
+  sourceScroller.rect.top = 100;
+  sourceScroller.append(new FakeElement({
+    classes: ['cm-line', 'HyperMD-header', 'HyperMD-header-2'],
+    textContent: '## Second',
+    rect: { top: 150, left: 300, right: 900, height: 28 },
+    attributes: { 'data-line': '4' },
+  }));
+  const chapters = [
+    { line: 0, level: 1, title: 'First', rawHeading: 'First' },
+    { line: 4, level: 2, title: 'Second', rawHeading: 'Second' },
+  ];
+
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+});
+
+test('Live Preview tracking falls back to the visible CodeMirror scroller', () => {
+  const { container, plugin, sourceScroller, view } = createReadingHarness();
+  view.getMode = () => 'source';
+  sourceScroller.scrollTop = 240;
+  view.editor = {
+    cm: {
+      lineBlockAtHeight: () => ({ from: 40 }),
+      state: { doc: { lineAt: () => ({ number: 9 }) } },
+    },
+  };
+  const chapters = [{ line: 0 }, { line: 8 }];
+
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 8);
 });
 
 test('clicking a Reading View chapter aligns its heading to the top baseline', async () => {
@@ -656,6 +771,8 @@ test('Settings load new default properties with backward compatibility', async (
   assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
   assert.equal(plugin.settings.showProgressRail, false);
   assert.equal(plugin.settings.tooltipGlassmorphism, true);
+  assert.equal(plugin.settings.readingBookmarksEnabled, false);
+  assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
 });
 
 test('Settings load preserves existing custom values', async () => {
@@ -672,6 +789,8 @@ test('Settings load preserves existing custom values', async () => {
   assert.equal(plugin.settings.hierarchyMode, 'all');
   assert.equal(plugin.settings.showProgressRail, true);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
+  assert.equal(plugin.settings.readingBookmarksEnabled, false);
+  assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
 });
 
 test('ChapterPipelineSettingTab renders all controls and updates settings', async () => {
@@ -721,6 +840,13 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   assert.equal(glassControl.value, true);
   await glassControl.changeHandler(false);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
+
+  const readingSetting = Setting.instances.find(s => s.name.includes('Reading Progress') || s.name.includes('阅读断点'));
+  assert.ok(readingSetting, 'reading progress toggle setting should be rendered');
+  const readingControl = readingSetting.controls[0];
+  assert.equal(readingControl.value, false);
+  await readingControl.changeHandler(true);
+  assert.equal(plugin.settings.readingBookmarksEnabled, true);
 });
 
 test('ChapterSuggestModal provides items, search text, renders badge/title/excerpt, and handles selection with sound', () => {
@@ -809,8 +935,8 @@ test('openChapterPalette extracts chapters and opens ChapterSuggestModal', async
   assert.equal(modal.getItems().length, 2);
 });
 
-test('onload registers jump-prev, jump-next, and open-palette commands', async () => {
-  const { app } = createReadingHarness();
+test('onload registers navigation and reading-bookmark commands', async () => {
+  const { app, vaultEvents } = createReadingHarness();
   app.workspace.on = () => {};
   app.workspace.onLayoutReady = () => {};
   app.metadataCache = { on: () => {} };
@@ -829,13 +955,30 @@ test('onload registers jump-prev, jump-next, and open-palette commands', async (
   assert.ok(paletteCmd, 'open-palette command should be registered');
   assert.equal(paletteCmd.name, 'Charter Pipeline: Search & switch chapter (Palette)');
 
+  const resumeCmd = plugin.commands.find(c => c.id === 'charter-pipeline-resume-last-chapter');
+  const revisitCmd = plugin.commands.find(c => c.id === 'charter-pipeline-toggle-revisit-current');
+  const importantCmd = plugin.commands.find(c => c.id === 'charter-pipeline-toggle-important-current');
+  const clearCmd = plugin.commands.find(c => c.id === 'charter-pipeline-clear-reading-bookmarks-current');
+  assert.equal(resumeCmd.name, 'Charter Pipeline: Resume last chapter');
+  assert.equal(revisitCmd.name, 'Charter Pipeline: Toggle revisit bookmark for current chapter');
+  assert.equal(importantCmd.name, 'Charter Pipeline: Toggle important bookmark for current chapter');
+  assert.equal(clearCmd.name, 'Charter Pipeline: Clear reading progress & bookmarks for current note');
+  assert.equal(resumeCmd.checkCallback(true), false, 'reading commands remain unavailable while the optional feature is off');
+  assert.equal(vaultEvents.has('rename'), true, 'the vault rename listener should migrate persisted reading state');
+
   // Verify command execution
   let prevCalled = false;
   let nextCalled = false;
   let paletteCalled = false;
+  let resumeCalled = false;
+  const toggledMarkers = [];
+  let cleared = false;
   plugin.jumpToPreviousChapter = () => { prevCalled = true; };
   plugin.jumpToNextChapter = () => { nextCalled = true; };
   plugin.openChapterPalette = () => { paletteCalled = true; };
+  plugin.resumeLastChapter = () => { resumeCalled = true; };
+  plugin.toggleCurrentChapterMarker = (markerName) => { toggledMarkers.push(markerName); };
+  plugin.clearReadingBookmarks = () => { cleared = true; };
 
   assert.equal(prevCmd.checkCallback(true), true);
   prevCmd.checkCallback(false);
@@ -848,6 +991,17 @@ test('onload registers jump-prev, jump-next, and open-palette commands', async (
   assert.equal(paletteCmd.checkCallback(true), true);
   paletteCmd.checkCallback(false);
   assert.equal(paletteCalled, true);
+
+  plugin.settings.readingBookmarksEnabled = true;
+  assert.equal(resumeCmd.checkCallback(true), true);
+  resumeCmd.checkCallback(false);
+  assert.equal(resumeCalled, true);
+
+  revisitCmd.checkCallback(false);
+  importantCmd.checkCallback(false);
+  clearCmd.checkCallback(false);
+  assert.deepEqual(toggledMarkers, ['revisit', 'important']);
+  assert.equal(cleared, true);
 });
 
 test('right docking applies dock-right class, calculates right gutter scaling, and flips tooltip positioning', async () => {
@@ -1349,5 +1503,185 @@ test('tooltip and modal escape numbered list headings to keep titles compact', a
   assert.equal(titleEl.textContent, '1\\. First Section', 'numbered heading should escape period to prevent <ol> list indentation');
 });
 
+test('chapter IDs retain their identity through reordering and distinguish duplicate headings', () => {
+  const settings = { minHeadingLevel: 1, maxHeadingLevel: 6, ignoreFirstH1: false, showExcerpt: false };
+  const original = ChapterPipelinePlugin.ChapterParser.parse('', [
+    { heading: 'Overview', level: 1, position: { start: { line: 0 } } },
+    { heading: 'Details', level: 2, position: { start: { line: 2 } } },
+    { heading: 'Details', level: 2, position: { start: { line: 4 } } },
+  ], settings);
+  const reordered = ChapterPipelinePlugin.ChapterParser.parse('', [
+    { heading: 'Details', level: 2, position: { start: { line: 0 } } },
+    { heading: 'Overview', level: 1, position: { start: { line: 2 } } },
+    { heading: 'Details', level: 2, position: { start: { line: 4 } } },
+  ], settings);
 
+  assert.equal(original[0].id, 'h1:overview:0');
+  assert.equal(original[1].id, 'h2:details:0');
+  assert.equal(original[2].id, 'h2:details:1');
+  assert.equal(reordered[1].id, 'h1:overview:0');
+  assert.equal(reordered[0].id, 'h2:details:0');
+});
 
+test('reading state records only active-view chapter changes and resumes the saved chapter', async () => {
+  const { plugin, view } = createReadingHarness();
+  plugin.settings.readingBookmarksEnabled = true;
+  const chapters = await plugin.getChaptersForView(view);
+  const backgroundView = new MarkdownView();
+  backgroundView.file = { path: 'other.md' };
+
+  plugin.app.workspace.getActiveViewOfType = () => backgroundView;
+  assert.equal(plugin.recordReadingPosition(view, chapters[1]), false, 'background views must not overwrite a resume point');
+
+  plugin.app.workspace.getActiveViewOfType = () => view;
+  assert.equal(plugin.recordReadingPosition(view, chapters[1]), true);
+  const savedResume = plugin.getReadingFileState(view.file, false).resume;
+  assert.equal(savedResume.chapterId, chapters[1].id);
+  assert.equal(savedResume.title, 'Second');
+
+  let jumpedTo = null;
+  plugin.jumpToHeading = (targetView, chapter) => { jumpedTo = { targetView, chapter }; };
+  assert.equal(await plugin.resumeLastChapter(view), true);
+  assert.deepEqual(jumpedTo, { targetView: view, chapter: chapters[1] });
+
+  clearTimeout(plugin.readingSaveTimer);
+  plugin.readingSaveTimer = null;
+});
+
+test('saved resume notification is non-blocking, appears once, and preserves the saved point', async () => {
+  const { plugin, view } = createReadingHarness();
+  plugin.settings.readingBookmarksEnabled = true;
+  const chapters = await plugin.getChaptersForView(view);
+  const fileState = plugin.getReadingFileState(view.file, true);
+  fileState.resume = { chapterId: chapters[1].id, title: chapters[1].title, updatedAt: 12 };
+  let jumped = false;
+  plugin.jumpToHeading = () => { jumped = true; };
+
+  await plugin.attachStepperToView(view);
+  await plugin.attachStepperToView(view);
+
+  assert.equal(Notice.instances.length, 1, 'resume notice should appear once per file per app session');
+  assert.equal(Notice.instances[0].message, 'Resume available: Second');
+  assert.equal(jumped, false, 'a resume notice must never auto-jump');
+  assert.equal(plugin.getReadingFileState(view.file, false).resume.chapterId, chapters[1].id);
+});
+
+test('revisit and important bookmarks render shapes, text labels, and context actions', async () => {
+  const { container, plugin, view } = createReadingHarness();
+  plugin.settings.readingBookmarksEnabled = true;
+  const chapters = await plugin.getChaptersForView(view);
+
+  await plugin.toggleChapterMarker(view, chapters[0], 'revisit');
+  await plugin.toggleChapterMarker(view, chapters[0], 'important');
+  await plugin.attachStepperToView(view);
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashItems[0].querySelectorAll('.codex-bookmark-marker').length, 2);
+  assert.equal(dashItems[0].getAttribute('aria-label'), 'First — Revisit, Important');
+
+  dashItems[0].dispatch('mouseenter');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  const labels = tooltip.querySelectorAll('.codex-bookmark-label');
+  assert.equal(labels.length, 2);
+  assert.equal(labels[0].textContent, 'Revisit');
+  assert.equal(labels[1].textContent, 'Important');
+
+  dashItems[0].dispatch('contextmenu');
+  const menu = Menu.instances.at(-1);
+  assert.deepEqual(menu.items.map((item) => item.title), [
+    'Remove revisit mark',
+    'Remove important mark',
+    'Clear chapter bookmarks'
+  ]);
+  await menu.items[0].clickHandler();
+  assert.equal(plugin.getChapterMarkers(view.file, chapters[0]).revisit, false);
+  assert.equal(plugin.getChapterMarkers(view.file, chapters[0]).important, true);
+});
+
+test('resume command fails safely and clears only an unresolvable resume point', async () => {
+  const { plugin, view } = createReadingHarness();
+  plugin.settings.readingBookmarksEnabled = true;
+  const fileState = plugin.getReadingFileState(view.file, true);
+  fileState.resume = { chapterId: 'h2:missing:0', title: 'Missing', updatedAt: 5 };
+  fileState.markers['h1:first:0'] = { revisit: true, important: false };
+  let jumped = false;
+  plugin.jumpToHeading = () => { jumped = true; };
+
+  assert.equal(await plugin.resumeLastChapter(view), false);
+  assert.equal(jumped, false);
+  assert.equal(fileState.resume, undefined);
+  assert.deepEqual(fileState.markers['h1:first:0'], { revisit: true, important: false });
+  assert.equal(Notice.instances.at(-1).message, 'The saved chapter is no longer available.');
+});
+
+test('renaming a note migrates and merges reading state without losing newer progress', async () => {
+  const { plugin } = createReadingHarness();
+  plugin.settings.readingState = {
+    version: 1,
+    files: {
+      'old.md': {
+        resume: { chapterId: 'h2:source:0', title: 'Source', updatedAt: 20 },
+        markers: { 'h1:first:0': { revisit: true, important: false } }
+      },
+      'new.md': {
+        resume: { chapterId: 'h2:target:0', title: 'Target', updatedAt: 10 },
+        markers: { 'h1:first:0': { revisit: false, important: true } }
+      }
+    }
+  };
+
+  assert.equal(await plugin.migrateReadingState('old.md', 'new.md'), true);
+  assert.equal(plugin.settings.readingState.files['old.md'], undefined);
+  const migrated = plugin.settings.readingState.files['new.md'];
+  assert.equal(migrated.resume.chapterId, 'h2:source:0');
+  assert.deepEqual(migrated.markers['h1:first:0'], { revisit: true, important: true });
+});
+
+test('user-facing strings follow Chinese Obsidian language and fall back to English otherwise', async () => {
+  const { app, view } = createReadingHarness();
+  global.window.localStorage.getItem = () => 'zh-CN';
+  app.workspace.on = () => {};
+  app.workspace.onLayoutReady = () => {};
+  app.metadataCache.on = () => {};
+  const plugin = new ChapterPipelinePlugin(app, {});
+  await plugin.onload();
+
+  const prevCommand = plugin.commands.find((command) => command.id === 'charter-pipeline-jump-prev');
+  const resumeCommand = plugin.commands.find((command) => command.id === 'charter-pipeline-resume-last-chapter');
+  assert.equal(prevCommand.name, 'Charter Pipeline：跳转至上一章节');
+  assert.equal(resumeCommand.name, 'Charter Pipeline：恢复上次阅读章节');
+
+  plugin.settingTab.display();
+  assert.equal(plugin.settingTab.containerEl.children[0].textContent, 'Charter Pipeline 设置');
+  const readingSetting = Setting.instances.find((setting) => setting.name === '开启阅读断点与章节书签');
+  assert.ok(readingSetting);
+
+  plugin.settings.readingBookmarksEnabled = true;
+  const modal = new ChapterPipelinePlugin.ChapterSuggestModal(app, plugin, view, []);
+  assert.equal(modal.placeholder, '搜索章节或公式…');
+  const chapter = (await plugin.getChaptersForView(view))[0];
+  await plugin.toggleChapterMarker(view, chapter, 'revisit');
+  await plugin.attachStepperToView(view);
+  const firstDash = view.contentEl.querySelectorAll('.codex-dash-item')[0];
+  firstDash.dispatch('contextmenu');
+  assert.equal(Menu.instances.at(-1).items[0].title, '移除稍后回看标记');
+
+  global.window.localStorage.getItem = () => 'fr-FR';
+  const fallbackModal = new ChapterPipelinePlugin.ChapterSuggestModal(app, plugin, view, []);
+  assert.equal(fallbackModal.placeholder, 'Search chapter or formula...');
+});
+
+test('active color is preserved across dashes, tooltips, and palette with a theme-accent fallback', async () => {
+  const { app, container, plugin, view } = createReadingHarness();
+  plugin.settings.activeColor = 'var(--interactive-accent)';
+  await plugin.attachStepperToView(view);
+
+  const stepper = container.querySelector('.codex-stepper-container');
+  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.equal(stepper.style.getPropertyValue('--codex-active-color'), 'var(--interactive-accent, #3b82f6)');
+  assert.equal(tooltip.style.getPropertyValue('--codex-active-color'), 'var(--interactive-accent, #3b82f6)');
+
+  const modal = new ChapterPipelinePlugin.ChapterSuggestModal(app, plugin, view, []);
+  assert.equal(modal.modalEl.style.getPropertyValue('--codex-active-color'), 'var(--interactive-accent, #3b82f6)');
+  assert.equal(plugin.resolveActiveColor('#ec4899'), '#ec4899');
+});

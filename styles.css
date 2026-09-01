@@ -109,6 +109,46 @@
               margin 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* 章节书签：保持 dash 起点/终点对齐，仅在端点追加形状标识。 */
+.codex-bookmark-markers {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.codex-bookmark-marker {
+  display: block;
+  width: 4px;
+  height: 4px;
+  flex: 0 0 4px;
+  background: var(--interactive-accent, #3b82f6);
+  box-shadow: 0 0 0 1px var(--background-primary, transparent);
+}
+
+.codex-bookmark-marker.is-revisit {
+  border-radius: 50%;
+}
+
+.codex-bookmark-marker.is-important {
+  background: #d97706;
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.86);
+}
+
+.codex-dash-item:focus-visible {
+  outline: 1px solid var(--codex-active-color, var(--interactive-accent, #3b82f6));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* 折叠与层级聚焦模式 (Dynamic Hierarchy Focus & Folding) */
 .codex-dash-item.is-collapsed {
   max-height: 0;
@@ -253,12 +293,12 @@ body .workspace-leaf .mod-highlighted {
 .codex-dash-item.active .codex-dash-bar {
   box-shadow: none;
   opacity: 1;
-  background-color: var(--codex-active-color, #3b82f6);
+  background-color: var(--codex-active-color, #3b82f6) !important;
 }
 
 .codex-dash-item.active:hover .codex-dash-bar {
   opacity: 1;
-  background-color: var(--codex-active-color, #3b82f6);
+  background-color: var(--codex-active-color, #3b82f6) !important;
   filter: brightness(1.15);
 }
 
@@ -465,6 +505,64 @@ body.theme-light .codex-floating-tooltip.is-solid {
   font-size: 11.5px;
 }
 
+/* 阅读断点与章节书签：文字标签补足形状和颜色之外的语义。 */
+.codex-tooltip-bookmark-status,
+.codex-modal-bookmark-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.codex-tooltip-bookmark-status {
+  padding-top: 5px;
+  border-top: 1px solid var(--background-modifier-border-focus, rgba(125, 125, 125, 0.12));
+}
+
+.codex-modal-bookmark-status {
+  margin-left: 32px;
+}
+
+.codex-bookmark-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--text-normal, #333333);
+  background: var(--background-modifier-hover, rgba(125, 125, 125, 0.12));
+  border: 1px solid var(--background-modifier-border, rgba(125, 125, 125, 0.18));
+}
+
+.codex-bookmark-label::before {
+  content: '';
+  display: block;
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  background: var(--interactive-accent, #3b82f6);
+}
+
+.codex-bookmark-label.is-revisit::before {
+  border-radius: 50%;
+}
+
+.codex-bookmark-label.is-important::before {
+  background: #d97706;
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.82);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-bookmark-marker,
+  .codex-bookmark-label::before {
+    transition: none;
+  }
+}
+
 /* 彻底清理气泡内部可能混入的 Callout 和块引用样式，保持纯净文本 */
 .codex-floating-tooltip .codex-tooltip-excerpt .callout,
 .codex-floating-tooltip .codex-tooltip-excerpt blockquote {
@@ -548,5 +646,3 @@ body.theme-light .codex-floating-tooltip.is-solid {
   margin: 0;
   display: inline;
 }
-
-

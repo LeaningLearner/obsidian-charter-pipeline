@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting, SuggestModal } = require('obsidian');
+const { Plugin, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting, SuggestModal, Menu, Notice } = require('obsidian');
 
 const DEFAULT_SETTINGS = {
   minHeadingLevel: 1,
@@ -14,7 +14,12 @@ const DEFAULT_SETTINGS = {
   dockPosition: 'left',
   hierarchyMode: 'hover-expand',
   showProgressRail: false,
-  tooltipGlassmorphism: true
+  tooltipGlassmorphism: true,
+  readingBookmarksEnabled: false,
+  readingState: {
+    version: 1,
+    files: {}
+  }
 };
 
 const I18N = {
@@ -64,7 +69,30 @@ const I18N = {
     enableSoundName: 'Enable Tactile Micro-Switch Sound',
     enableSoundDesc: 'Play subtle mechanical micro-switch sounds on clicking chapters and scrolling across headings.',
     soundVolumeName: 'Sound Volume (%)',
-    soundVolumeDesc: 'Adjust the volume of interactive tactile sound effects (Default: 50%).'
+    soundVolumeDesc: 'Adjust the volume of interactive tactile sound effects (Default: 50%).',
+    searchPlaceholder: 'Search chapter or formula...',
+    readingSectionTitle: 'Reading Progress & Bookmarks',
+    readingBookmarksEnabledName: 'Enable Reading Progress & Bookmarks',
+    readingBookmarksEnabledDesc: 'Save the last chapter you read and add optional chapter bookmarks. Stored only in Charter Pipeline plugin data; your Markdown files are never changed.',
+    revisitLabel: 'Revisit',
+    importantLabel: 'Important',
+    markForRevisit: 'Mark for revisit',
+    removeRevisitMark: 'Remove revisit mark',
+    markImportant: 'Mark as important',
+    removeImportantMark: 'Remove important mark',
+    clearChapterBookmarks: 'Clear chapter bookmarks',
+    commandJumpPrev: 'Charter Pipeline: Jump to previous chapter',
+    commandJumpNext: 'Charter Pipeline: Jump to next chapter',
+    commandOpenPalette: 'Charter Pipeline: Search & switch chapter (Palette)',
+    commandResumeLastChapter: 'Charter Pipeline: Resume last chapter',
+    commandToggleRevisit: 'Charter Pipeline: Toggle revisit bookmark for current chapter',
+    commandToggleImportant: 'Charter Pipeline: Toggle important bookmark for current chapter',
+    commandClearReadingBookmarks: 'Charter Pipeline: Clear reading progress & bookmarks for current note',
+    resumeAvailable: 'Resume available: {title}',
+    resumeUnavailable: 'No saved reading position in this note.',
+    resumeNotFound: 'The saved chapter is no longer available.',
+    readingBookmarksCleared: 'Reading progress and bookmarks cleared for this note.',
+    chapterStatus: '{title} — {statuses}'
   },
   zh: {
     tabTitle: 'Charter Pipeline 设置',
@@ -112,13 +140,45 @@ const I18N = {
     enableSoundName: '开启拟物微动音效',
     enableSoundDesc: '在点击横线跳转及页面滚动跨越章节时，播放轻微清脆的机械微动与转轮刻度音。',
     soundVolumeName: '音效音量 (%)',
-    soundVolumeDesc: '调节交互音效的音量大小（默认 50% 柔和舒适音量）。'
+    soundVolumeDesc: '调节交互音效的音量大小（默认 50% 柔和舒适音量）。',
+    searchPlaceholder: '搜索章节或公式…',
+    readingSectionTitle: '阅读断点与章节书签',
+    readingBookmarksEnabledName: '开启阅读断点与章节书签',
+    readingBookmarksEnabledDesc: '保存上次阅读章节，并可为章节添加书签。数据仅保存在 Charter Pipeline 插件配置中，不会修改 Markdown 文件。',
+    revisitLabel: '稍后回看',
+    importantLabel: '重点',
+    markForRevisit: '标记为稍后回看',
+    removeRevisitMark: '移除稍后回看标记',
+    markImportant: '标记为重点',
+    removeImportantMark: '移除重点标记',
+    clearChapterBookmarks: '清除本章节书签',
+    commandJumpPrev: 'Charter Pipeline：跳转至上一章节',
+    commandJumpNext: 'Charter Pipeline：跳转至下一章节',
+    commandOpenPalette: 'Charter Pipeline：搜索并快速跳转章节',
+    commandResumeLastChapter: 'Charter Pipeline：恢复上次阅读章节',
+    commandToggleRevisit: 'Charter Pipeline：切换当前章节的稍后回看书签',
+    commandToggleImportant: 'Charter Pipeline：切换当前章节的重点书签',
+    commandClearReadingBookmarks: 'Charter Pipeline：清除当前笔记的阅读断点与书签',
+    resumeAvailable: '可恢复上次阅读：{title}',
+    resumeUnavailable: '这篇笔记没有保存的阅读位置。',
+    resumeNotFound: '保存的章节已不存在，无法恢复。',
+    readingBookmarksCleared: '已清除本笔记的阅读断点与书签。',
+    chapterStatus: '{title} — {statuses}'
   }
 };
 
 function getLocale() {
   const lang = (typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('language') : null) || (typeof navigator !== 'undefined' ? navigator.language : 'en') || 'en';
   return String(lang).toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+function t(key, variables = {}) {
+  const localeStrings = I18N[getLocale()] || I18N.en;
+  const value = localeStrings[key] !== undefined ? localeStrings[key] : I18N.en[key];
+  if (typeof value !== 'string') return value === undefined ? key : value;
+  return value.replace(/\{(\w+)\}/g, (match, name) => (
+    variables[name] === undefined || variables[name] === null ? match : String(variables[name])
+  ));
 }
 
 class SoundEngine {
@@ -247,10 +307,16 @@ class ChapterParser {
     const totalLines = lines.length;
 
     let skippedFirstH1 = false;
+    const chapterIdOccurrences = new Map();
 
     for (let i = 0; i < headings.length; i++) {
       const currentH = headings[i];
       const nextH = headings[i + 1];
+      const normalizedHeading = normalizeHeadingText(currentH.heading) || `line${currentH.position?.start?.line ?? i}`;
+      const chapterIdBase = `h${currentH.level}:${normalizedHeading}`;
+      const chapterIdOccurrence = chapterIdOccurrences.get(chapterIdBase) || 0;
+      chapterIdOccurrences.set(chapterIdBase, chapterIdOccurrence + 1);
+      const chapterId = `${chapterIdBase}:${chapterIdOccurrence}`;
 
       if (ignoreFirstH1 && !skippedFirstH1 && currentH.level === 1) {
         skippedFirstH1 = true;
@@ -309,6 +375,7 @@ class ChapterParser {
         level: currentH.level,
         line: currentH.position.start.line,
         headingIndex: i,
+        id: chapterId,
         summaryMarkdown
       });
     }
@@ -394,13 +461,16 @@ class ChapterSuggestModal extends SuggestModal {
     this.view = view;
     this.chapters = chapters || [];
     if (typeof this.setPlaceholder === 'function') {
-      this.setPlaceholder('Search chapter or formula...');
+      this.setPlaceholder(t('searchPlaceholder'));
     }
     if (this.modalEl) {
       if (typeof this.modalEl.addClass === 'function') {
         this.modalEl.addClass('codex-suggest-modal');
       } else if (this.modalEl.classList && typeof this.modalEl.classList.add === 'function') {
         this.modalEl.classList.add('codex-suggest-modal');
+      }
+      if (this.modalEl.style && typeof this.modalEl.style.setProperty === 'function') {
+        this.modalEl.style.setProperty('--codex-active-color', this.plugin?.resolveActiveColor?.(this.plugin?.settings?.activeColor));
       }
     }
   }
@@ -448,6 +518,14 @@ class ChapterSuggestModal extends SuggestModal {
         MarkdownRenderer.render(this.app, item.summaryMarkdown, excerptEl, '', this.plugin);
       }
     }
+
+    const statuses = this.plugin?.getChapterStatusLabels?.(this.view?.file, item) || [];
+    if (statuses.length > 0 && typeof el.createDiv === 'function') {
+      const statusEl = el.createDiv({ cls: 'codex-modal-bookmark-status' });
+      statuses.forEach((status) => {
+        statusEl.createSpan({ cls: `codex-bookmark-label ${status.className}`, text: status.label });
+      });
+    }
   }
 
   onChooseItem(item, evt) {
@@ -470,14 +548,13 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    const locale = getLocale();
-    const t = I18N[locale] || I18N.en;
+    const strings = I18N[getLocale()] || I18N.en;
 
-    containerEl.createEl('h2', { text: t.tabTitle });
+    containerEl.createEl('h2', { text: strings.tabTitle });
 
     new Setting(containerEl)
-      .setName(t.showExcerptName)
-      .setDesc(t.showExcerptDesc)
+      .setName(strings.showExcerptName)
+      .setDesc(strings.showExcerptDesc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showExcerpt !== false)
@@ -489,8 +566,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t.ignoreH1Name)
-      .setDesc(t.ignoreH1Desc)
+      .setName(strings.ignoreH1Name)
+      .setDesc(strings.ignoreH1Desc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.ignoreFirstH1)
@@ -502,10 +579,10 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t.dockPositionName)
-      .setDesc(t.dockPositionDesc)
+      .setName(strings.dockPositionName)
+      .setDesc(strings.dockPositionDesc)
       .addDropdown((drop) => {
-        for (const [key, val] of Object.entries(t.dockPositionOptions)) {
+        for (const [key, val] of Object.entries(strings.dockPositionOptions)) {
           drop.addOption(key, val);
         }
         drop
@@ -518,10 +595,10 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t.hierarchyModeName)
-      .setDesc(t.hierarchyModeDesc)
+      .setName(strings.hierarchyModeName)
+      .setDesc(strings.hierarchyModeDesc)
       .addDropdown((drop) => {
-        for (const [key, val] of Object.entries(t.hierarchyModeOptions)) {
+        for (const [key, val] of Object.entries(strings.hierarchyModeOptions)) {
           drop.addOption(key, val);
         }
         drop
@@ -534,8 +611,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t.showProgressRailName)
-      .setDesc(t.showProgressRailDesc)
+      .setName(strings.showProgressRailName)
+      .setDesc(strings.showProgressRailDesc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showProgressRail === true)
@@ -547,8 +624,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t.tooltipGlassmorphismName)
-      .setDesc(t.tooltipGlassmorphismDesc)
+      .setName(strings.tooltipGlassmorphismName)
+      .setDesc(strings.tooltipGlassmorphismDesc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.tooltipGlassmorphism !== false)
@@ -559,11 +636,26 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
 
+    containerEl.createEl('h3', { text: strings.readingSectionTitle });
+
+    new Setting(containerEl)
+      .setName(strings.readingBookmarksEnabledName)
+      .setDesc(strings.readingBookmarksEnabledDesc)
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.readingBookmarksEnabled === true)
+          .onChange(async (value) => {
+            this.plugin.settings.readingBookmarksEnabled = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          })
+      );
+
     const levelSetting = new Setting(containerEl)
-      .setName(t.maxLevelName)
-      .setDesc(t.maxLevelDesc)
+      .setName(strings.maxLevelName)
+      .setDesc(strings.maxLevelDesc)
       .addDropdown((drop) => {
-        for (const [key, val] of Object.entries(t.maxLevelOptions)) {
+        for (const [key, val] of Object.entries(strings.maxLevelOptions)) {
           drop.addOption(key, val);
         }
         drop
@@ -576,10 +668,10 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       });
 
     const colorSetting = new Setting(containerEl)
-      .setName(t.activeColorName)
-      .setDesc(t.activeColorDesc)
+      .setName(strings.activeColorName)
+      .setDesc(strings.activeColorDesc)
       .addDropdown((drop) => {
-        for (const [key, val] of Object.entries(t.activeColorOptions)) {
+        for (const [key, val] of Object.entries(strings.activeColorOptions)) {
           drop.addOption(key, val);
         }
         drop
@@ -592,8 +684,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName(t.narrowThresholdName)
-      .setDesc(t.narrowThresholdDesc)
+      .setName(strings.narrowThresholdName)
+      .setDesc(strings.narrowThresholdDesc)
       .addSlider((slider) =>
         slider
           .setLimits(350, 700, 10)
@@ -606,11 +698,11 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl('h3', { text: t.soundSectionTitle });
+    containerEl.createEl('h3', { text: strings.soundSectionTitle });
 
     new Setting(containerEl)
-      .setName(t.enableSoundName)
-      .setDesc(t.enableSoundDesc)
+      .setName(strings.enableSoundName)
+      .setDesc(strings.enableSoundDesc)
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableSound !== false)
@@ -621,8 +713,8 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t.soundVolumeName)
-      .setDesc(t.soundVolumeDesc)
+      .setName(strings.soundVolumeName)
+      .setDesc(strings.soundVolumeDesc)
       .addSlider((slider) =>
         slider
           .setLimits(0, 100, 5)
@@ -658,6 +750,52 @@ function normalizeHeadingText(text) {
     .toLowerCase();
 }
 
+function createEmptyReadingState() {
+  return { version: 1, files: {} };
+}
+
+function normalizeReadingState(readingState) {
+  const normalized = createEmptyReadingState();
+  const files = readingState && typeof readingState === 'object' && !Array.isArray(readingState)
+    ? readingState.files
+    : null;
+  if (!files || typeof files !== 'object' || Array.isArray(files)) return normalized;
+
+  for (const [path, rawFileState] of Object.entries(files)) {
+    if (!path || !rawFileState || typeof rawFileState !== 'object' || Array.isArray(rawFileState)) continue;
+
+    const fileState = { markers: {} };
+    const rawResume = rawFileState.resume;
+    if (rawResume && typeof rawResume === 'object' && typeof rawResume.chapterId === 'string' && rawResume.chapterId) {
+      fileState.resume = {
+        chapterId: rawResume.chapterId,
+        title: typeof rawResume.title === 'string' ? rawResume.title : '',
+        updatedAt: Number.isFinite(rawResume.updatedAt) ? rawResume.updatedAt : 0
+      };
+    }
+
+    const rawMarkers = rawFileState.markers;
+    if (rawMarkers && typeof rawMarkers === 'object' && !Array.isArray(rawMarkers)) {
+      for (const [chapterId, rawMarker] of Object.entries(rawMarkers)) {
+        if (!chapterId || !rawMarker || typeof rawMarker !== 'object' || Array.isArray(rawMarker)) continue;
+        const marker = {
+          revisit: rawMarker.revisit === true,
+          important: rawMarker.important === true
+        };
+        if (marker.revisit || marker.important) {
+          fileState.markers[chapterId] = marker;
+        }
+      }
+    }
+
+    if (fileState.resume || Object.keys(fileState.markers).length > 0) {
+      normalized.files[path] = fileState;
+    }
+  }
+
+  return normalized;
+}
+
 class ChapterPipelinePlugin extends Plugin {
   constructor(app, manifest) {
     super(app, manifest);
@@ -666,9 +804,11 @@ class ChapterPipelinePlugin extends Plugin {
     this.renderVersions = new Map();
     this.scrollBindings = new Map();
     this.soundEngine = new SoundEngine();
-    this.settings = DEFAULT_SETTINGS;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, { readingState: createEmptyReadingState() });
     this.refreshFrame = null;
     this.refreshTimer = null;
+    this.readingSaveTimer = null;
+    this.resumePromptedPaths = new Set();
   }
 
   async onload() {
@@ -676,6 +816,16 @@ class ChapterPipelinePlugin extends Plugin {
 
     await this.loadSettings();
     this.addSettingTab(new ChapterPipelineSettingTab(this.app, this));
+
+    if (this.app.vault && typeof this.app.vault.on === 'function') {
+      this.registerEvent(
+        this.app.vault.on('rename', (file, oldPath) => {
+          if (file?.path && oldPath) {
+            this.migrateReadingState(oldPath, file.path);
+          }
+        })
+      );
+    }
 
     // 监听活动 Leaf 切换
     this.registerEvent(
@@ -727,7 +877,7 @@ class ChapterPipelinePlugin extends Plugin {
     // 注册快捷跳转与章节搜索命令
     this.addCommand({
       id: 'charter-pipeline-jump-prev',
-      name: 'Charter Pipeline: Jump to previous chapter',
+      name: t('commandJumpPrev'),
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view) {
@@ -742,7 +892,7 @@ class ChapterPipelinePlugin extends Plugin {
 
     this.addCommand({
       id: 'charter-pipeline-jump-next',
-      name: 'Charter Pipeline: Jump to next chapter',
+      name: t('commandJumpNext'),
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view) {
@@ -757,7 +907,7 @@ class ChapterPipelinePlugin extends Plugin {
 
     this.addCommand({
       id: 'charter-pipeline-open-palette',
-      name: 'Charter Pipeline: Search & switch chapter (Palette)',
+      name: t('commandOpenPalette'),
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view) {
@@ -767,6 +917,58 @@ class ChapterPipelinePlugin extends Plugin {
           return true;
         }
         return false;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-resume-last-chapter',
+      name: t('commandResumeLastChapter'),
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view || this.settings.readingBookmarksEnabled !== true) return false;
+        if (!checking) {
+          this.resumeLastChapter(view);
+        }
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-toggle-revisit-current',
+      name: t('commandToggleRevisit'),
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view || this.settings.readingBookmarksEnabled !== true) return false;
+        if (!checking) {
+          this.toggleCurrentChapterMarker('revisit', view);
+        }
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-toggle-important-current',
+      name: t('commandToggleImportant'),
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view || this.settings.readingBookmarksEnabled !== true) return false;
+        if (!checking) {
+          this.toggleCurrentChapterMarker('important', view);
+        }
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: 'charter-pipeline-clear-reading-bookmarks-current',
+      name: t('commandClearReadingBookmarks'),
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view || this.settings.readingBookmarksEnabled !== true) return false;
+        if (!checking) {
+          this.clearReadingBookmarks(view);
+        }
+        return true;
       }
     });
 
@@ -801,11 +1003,278 @@ class ChapterPipelinePlugin extends Plugin {
     if (this.settings.tooltipGlassmorphism === undefined) {
       this.settings.tooltipGlassmorphism = true;
     }
+    if (this.settings.readingBookmarksEnabled === undefined) {
+      this.settings.readingBookmarksEnabled = false;
+    }
+    this.settings.readingState = normalizeReadingState(this.settings.readingState);
     await this.saveSettings();
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  ensureReadingState() {
+    const state = this.settings?.readingState;
+    if (!state || typeof state !== 'object' || Array.isArray(state) || !state.files || typeof state.files !== 'object' || Array.isArray(state.files)) {
+      this.settings.readingState = createEmptyReadingState();
+    }
+    return this.settings.readingState;
+  }
+
+  isReadingBookmarksEnabled() {
+    return this.settings?.readingBookmarksEnabled === true;
+  }
+
+  resolveActiveColor(activeColor) {
+    const color = typeof activeColor === 'string' ? activeColor.trim() : '';
+    if (!color) return '#3b82f6';
+    if (/^var\(\s*--interactive-accent\s*\)$/i.test(color)) {
+      return 'var(--interactive-accent, #3b82f6)';
+    }
+    return color;
+  }
+
+  getReadingFileState(fileOrPath, create = false) {
+    const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath?.path;
+    if (!path) return null;
+
+    const readingState = this.ensureReadingState();
+    let fileState = readingState.files[path];
+    if (!fileState && create) {
+      fileState = { markers: {} };
+      readingState.files[path] = fileState;
+    }
+    return fileState || null;
+  }
+
+  pruneReadingFileState(fileOrPath) {
+    const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath?.path;
+    if (!path) return;
+    const readingState = this.ensureReadingState();
+    const fileState = readingState.files[path];
+    if (fileState && !fileState.resume && Object.keys(fileState.markers || {}).length === 0) {
+      delete readingState.files[path];
+    }
+  }
+
+  getChapterMarkers(file, chapter) {
+    if (!file || !chapter?.id) return null;
+    return this.getReadingFileState(file, false)?.markers?.[chapter.id] || null;
+  }
+
+  getChapterStatusLabels(file, chapter) {
+    if (!this.isReadingBookmarksEnabled()) return [];
+    const markers = this.getChapterMarkers(file, chapter);
+    if (!markers) return [];
+
+    const labels = [];
+    if (markers.revisit) labels.push({ className: 'is-revisit', label: t('revisitLabel') });
+    if (markers.important) labels.push({ className: 'is-important', label: t('importantLabel') });
+    return labels;
+  }
+
+  scheduleReadingStateSave() {
+    if (this.readingSaveTimer !== null) {
+      clearTimeout(this.readingSaveTimer);
+    }
+    this.readingSaveTimer = setTimeout(() => {
+      this.readingSaveTimer = null;
+      this.saveSettings().catch(() => {});
+    }, 350);
+  }
+
+  isActiveMarkdownView(view) {
+    if (!view || !this.app?.workspace?.getActiveViewOfType) return false;
+    return this.app.workspace.getActiveViewOfType(MarkdownView) === view;
+  }
+
+  recordReadingPosition(view, chapter) {
+    if (!this.isReadingBookmarksEnabled() || !this.isActiveMarkdownView(view) || !view?.file || !chapter?.id) return false;
+
+    const fileState = this.getReadingFileState(view.file, true);
+    if (fileState.resume?.chapterId === chapter.id) return false;
+
+    fileState.resume = {
+      chapterId: chapter.id,
+      title: chapter.title || chapter.rawHeading || '',
+      updatedAt: Date.now()
+    };
+    this.scheduleReadingStateSave();
+    return true;
+  }
+
+  async getAllChaptersForView(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView?.file) return [];
+
+    const content = await this.app.vault.cachedRead(targetView.file);
+    return this.extractAllChapters(content, targetView.file);
+  }
+
+  async resumeLastChapter(view) {
+    if (!this.isReadingBookmarksEnabled()) return false;
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView?.file) return false;
+
+    const savedResume = this.getReadingFileState(targetView.file, false)?.resume;
+    if (!savedResume?.chapterId) {
+      this.showNotice(t('resumeUnavailable'));
+      return false;
+    }
+
+    const chapters = await this.getAllChaptersForView(targetView);
+    const targetChapter = chapters.find((chapter) => chapter.id === savedResume.chapterId);
+    if (!targetChapter) {
+      const fileState = this.getReadingFileState(targetView.file, false);
+      if (fileState) {
+        delete fileState.resume;
+        this.pruneReadingFileState(targetView.file);
+        await this.saveSettings();
+      }
+      this.showNotice(t('resumeNotFound'));
+      return false;
+    }
+
+    if (this.settings.enableSound !== false) {
+      const volume = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+      this.soundEngine.playClick(volume);
+    }
+    this.jumpToHeading(targetView, targetChapter);
+    return true;
+  }
+
+  async toggleChapterMarker(view, chapter, markerName) {
+    if (!this.isReadingBookmarksEnabled() || !view?.file || !chapter?.id || !['revisit', 'important'].includes(markerName)) return false;
+
+    const fileState = this.getReadingFileState(view.file, true);
+    const markers = fileState.markers || (fileState.markers = {});
+    const current = markers[chapter.id] || { revisit: false, important: false };
+    current[markerName] = !current[markerName];
+
+    if (current.revisit || current.important) {
+      markers[chapter.id] = current;
+    } else {
+      delete markers[chapter.id];
+      this.pruneReadingFileState(view.file);
+    }
+
+    await this.saveSettings();
+    this.updateAllMarkdownViews();
+    return current[markerName];
+  }
+
+  async toggleCurrentChapterMarker(markerName, view) {
+    if (!this.isReadingBookmarksEnabled()) return false;
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView?.file) return false;
+
+    const chapters = await this.getChaptersForView(targetView);
+    const activeIndex = this.getActiveChapterIndex(targetView, chapters);
+    return activeIndex >= 0 ? this.toggleChapterMarker(targetView, chapters[activeIndex], markerName) : false;
+  }
+
+  async clearReadingBookmarks(view) {
+    const targetView = (view && view.file)
+      ? view
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!targetView?.file) return false;
+
+    const readingState = this.ensureReadingState();
+    delete readingState.files[targetView.file.path];
+    await this.saveSettings();
+    this.updateAllMarkdownViews();
+    this.showNotice(t('readingBookmarksCleared'));
+    return true;
+  }
+
+  showChapterContextMenu(event, view, chapter) {
+    if (!this.isReadingBookmarksEnabled() || !chapter) return;
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.stopPropagation) event.stopPropagation();
+
+    const markers = this.getChapterMarkers(view?.file, chapter) || {};
+    const menu = new Menu();
+    menu.addItem((item) => item
+      .setTitle(markers.revisit ? t('removeRevisitMark') : t('markForRevisit'))
+      .onClick(() => this.toggleChapterMarker(view, chapter, 'revisit')));
+    menu.addItem((item) => item
+      .setTitle(markers.important ? t('removeImportantMark') : t('markImportant'))
+      .onClick(() => this.toggleChapterMarker(view, chapter, 'important')));
+    if (markers.revisit || markers.important) {
+      menu.addItem((item) => item
+        .setTitle(t('clearChapterBookmarks'))
+        .onClick(() => this.clearChapterMarkers(view, chapter)));
+    }
+    menu.showAtMouseEvent(event);
+  }
+
+  async clearChapterMarkers(view, chapter) {
+    if (!view?.file || !chapter?.id) return false;
+    const fileState = this.getReadingFileState(view.file, false);
+    if (!fileState?.markers?.[chapter.id]) return false;
+    delete fileState.markers[chapter.id];
+    this.pruneReadingFileState(view.file);
+    await this.saveSettings();
+    this.updateAllMarkdownViews();
+    return true;
+  }
+
+  mergeReadingFileStates(destinationState, sourceState) {
+    const merged = { markers: {} };
+    const states = [destinationState, sourceState].filter(Boolean);
+    for (const state of states) {
+      for (const [chapterId, marker] of Object.entries(state.markers || {})) {
+        const current = merged.markers[chapterId] || { revisit: false, important: false };
+        current.revisit = current.revisit || marker.revisit === true;
+        current.important = current.important || marker.important === true;
+        merged.markers[chapterId] = current;
+      }
+    }
+
+    const destinationResume = destinationState?.resume;
+    const sourceResume = sourceState?.resume;
+    if (destinationResume || sourceResume) {
+      const newerSource = sourceResume && (!destinationResume || sourceResume.updatedAt > destinationResume.updatedAt);
+      merged.resume = newerSource ? sourceResume : destinationResume;
+    }
+    return merged;
+  }
+
+  async migrateReadingState(oldPath, newPath) {
+    if (!oldPath || !newPath || oldPath === newPath) return false;
+    const readingState = this.ensureReadingState();
+    const sourceState = readingState.files[oldPath];
+    if (!sourceState) return false;
+
+    readingState.files[newPath] = this.mergeReadingFileStates(readingState.files[newPath], sourceState);
+    delete readingState.files[oldPath];
+    await this.saveSettings();
+    return true;
+  }
+
+  maybeShowResumeNotice(view, content, file) {
+    if (!this.isReadingBookmarksEnabled() || !this.isActiveMarkdownView(view) || !file?.path || this.resumePromptedPaths.has(file.path)) return;
+    const savedResume = this.getReadingFileState(file, false)?.resume;
+    if (!savedResume?.chapterId) return;
+
+    this.resumePromptedPaths.add(file.path);
+    const chapter = this.extractAllChapters(content, file).find((item) => item.id === savedResume.chapterId);
+    if (chapter) {
+      this.showNotice(t('resumeAvailable', { title: chapter.title || savedResume.title }));
+    }
+  }
+
+  showNotice(message, timeout = 6000) {
+    if (typeof Notice === 'function') {
+      new Notice(message, timeout);
+    }
   }
 
   scheduleUpdateAllMarkdownViews() {
@@ -837,7 +1306,7 @@ class ChapterPipelinePlugin extends Plugin {
     });
   }
 
-  extractChapters(content, file) {
+  extractChapters(content, file, parserSettings = this.settings) {
     const fileCache = this.app.metadataCache.getFileCache(file);
     let headings = fileCache ? fileCache.headings || [] : [];
 
@@ -860,7 +1329,16 @@ class ChapterPipelinePlugin extends Plugin {
       }
     }
 
-    return ChapterParser.parse(content, headings, this.settings);
+    return ChapterParser.parse(content, headings, parserSettings);
+  }
+
+  extractAllChapters(content, file) {
+    const allHeadingSettings = Object.assign({}, this.settings, {
+      minHeadingLevel: 1,
+      maxHeadingLevel: 6,
+      ignoreFirstH1: false
+    });
+    return this.extractChapters(content, file, allHeadingSettings);
   }
 
   async getChaptersForView(view) {
@@ -969,8 +1447,9 @@ class ChapterPipelinePlugin extends Plugin {
 
     if (this.scrollBindings.has(container)) {
       const binding = this.scrollBindings.get(container);
-      if (binding?.scroller && binding?.handler) {
-        binding.scroller.removeEventListener('scroll', binding.handler);
+      const boundScrollers = binding?.scrollers || (binding?.scroller ? [binding.scroller] : []);
+      if (binding?.handler) {
+        boundScrollers.forEach((scroller) => scroller?.removeEventListener?.('scroll', binding.handler));
       }
       this.scrollBindings.delete(container);
     }
@@ -981,6 +1460,7 @@ class ChapterPipelinePlugin extends Plugin {
       return;
     }
     const chapters = this.extractChapters(content, file);
+    this.maybeShowResumeNotice(view, content, file);
     if (chapters.length === 0) return;
 
     // 1. 创建散落横线容器
@@ -990,7 +1470,8 @@ class ChapterPipelinePlugin extends Plugin {
     }
     const hierarchyMode = this.settings.hierarchyMode || 'all';
     stepperContainer.classList.add(`hierarchy-mode-${hierarchyMode}`);
-    stepperContainer.style.setProperty('--codex-active-color', this.settings.activeColor || '#3b82f6');
+    const activeColor = this.resolveActiveColor(this.settings.activeColor);
+    stepperContainer.style.setProperty('--codex-active-color', activeColor);
     const track = stepperContainer.createDiv({ cls: 'codex-stepper-track' });
     track.classList.add(`hierarchy-mode-${hierarchyMode}`);
 
@@ -1005,6 +1486,7 @@ class ChapterPipelinePlugin extends Plugin {
 
     // 2. 创建悬浮章节名独立气泡浮层（直接挂载到 document.body，采用全局屏幕坐标精准对齐）
     const floatingTooltip = document.body.createDiv({ cls: 'codex-floating-tooltip' });
+    floatingTooltip.style.setProperty('--codex-active-color', activeColor);
     if (this.settings.tooltipGlassmorphism === false) {
       floatingTooltip.classList.add('is-solid');
     }
@@ -1140,6 +1622,19 @@ class ChapterPipelinePlugin extends Plugin {
       // 散落横线条
       dashItem.createSpan({ cls: 'codex-dash-bar' });
 
+      const bookmarkStatuses = this.getChapterStatusLabels(file, chap);
+      if (bookmarkStatuses.length > 0) {
+        dashItem.classList.add('has-bookmarks');
+        const statusText = bookmarkStatuses.map((status) => status.label).join(', ');
+        dashItem.setAttribute('aria-label', t('chapterStatus', { title: chap.title, statuses: statusText }));
+        const markerEl = dashItem.createSpan({ cls: 'codex-bookmark-markers', attr: { 'aria-hidden': 'true' } });
+        bookmarkStatuses.forEach((status) => {
+          markerEl.createSpan({ cls: `codex-bookmark-marker ${status.className}` });
+        });
+      } else {
+        dashItem.setAttribute('aria-label', chap.title || chap.rawHeading || `H${chap.level}`);
+      }
+
       // 鼠标悬浮：横线屏幕绝对中心点 100% 对齐气泡垂直几何中心
       dashItem.addEventListener('mouseenter', () => {
         const itemRect = dashItem.getBoundingClientRect();
@@ -1187,6 +1682,14 @@ class ChapterPipelinePlugin extends Plugin {
           MarkdownRenderer.render(this.app, chap.summaryMarkdown, excerptEl, '', this);
         }
 
+        const statuses = this.getChapterStatusLabels(file, chap);
+        if (statuses.length > 0) {
+          const statusEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-bookmark-status' });
+          statuses.forEach((status) => {
+            statusEl.createSpan({ cls: `codex-bookmark-label ${status.className}`, text: status.label });
+          });
+        }
+
         if (this.settings.tooltipGlassmorphism === false) {
           floatingTooltip.classList.add('is-solid');
         } else {
@@ -1200,9 +1703,7 @@ class ChapterPipelinePlugin extends Plugin {
         floatingTooltip.classList.remove('is-visible');
       });
 
-      // 点击横线：拟物微动音效 + 纯净置顶平滑跳转
-      dashItem.addEventListener('click', (e) => {
-        e.stopPropagation();
+      const navigateToChapter = () => {
         isClickScrolling = true;
         if (clickTimeout) clearTimeout(clickTimeout);
 
@@ -1217,11 +1718,30 @@ class ChapterPipelinePlugin extends Plugin {
           this.soundEngine.playClick(vol);
         }
 
+        this.recordReadingPosition(view, chap);
         this.jumpToHeading(view, chap);
 
         clickTimeout = setTimeout(() => {
           isClickScrolling = false;
         }, 600);
+      };
+
+      // 点击横线：拟物微动音效 + 纯净置顶平滑跳转
+      dashItem.addEventListener('click', (e) => {
+        if (e?.stopPropagation) e.stopPropagation();
+        navigateToChapter();
+      });
+
+      dashItem.setAttribute('role', 'button');
+      dashItem.setAttribute('tabindex', '0');
+      dashItem.addEventListener('keydown', (e) => {
+        if (e?.key !== 'Enter' && e?.key !== ' ') return;
+        if (e?.preventDefault) e.preventDefault();
+        navigateToChapter();
+      });
+
+      dashItem.addEventListener('contextmenu', (e) => {
+        this.showChapterContextMenu(e, view, chap);
       });
 
       dashElements.push(dashItem);
@@ -1246,9 +1766,12 @@ class ChapterPipelinePlugin extends Plugin {
 
       // 滚动跨越新章节时触发机械转轮刻度轻音
       if (activeIdx !== previousActiveIdx) {
-        if (previousActiveIdx !== -1 && this.settings.enableSound !== false) {
-          const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
-          this.soundEngine.playScrollTick(vol);
+        if (previousActiveIdx !== -1) {
+          if (this.settings.enableSound !== false) {
+            const vol = this.settings.soundVolume !== undefined ? this.settings.soundVolume : 50;
+            this.soundEngine.playScrollTick(vol);
+          }
+          this.recordReadingPosition(view, chapters[activeIdx]);
         }
         previousActiveIdx = activeIdx;
       }
@@ -1280,20 +1803,55 @@ class ChapterPipelinePlugin extends Plugin {
 
     updateActiveByRealLine();
 
-    const scroller = this.getViewScroller(container, view);
-    if (scroller) {
-      scroller.addEventListener('scroll', throttledScroll, { passive: true });
-      this.scrollBindings.set(container, { scroller, handler: throttledScroll });
+    const scrollers = this.getViewScrollers(container, view);
+    if (scrollers.length > 0) {
+      scrollers.forEach((scroller) => scroller.addEventListener('scroll', throttledScroll, { passive: true }));
+      this.scrollBindings.set(container, { scrollers, handler: throttledScroll });
     }
   }
 
-  getViewScroller(container, view = null) {
-    if (!container) return null;
+  getViewScrollers(container, view = null) {
+    if (!container) return [];
     const mode = view?.getMode ? view.getMode() : view?.currentMode?.type;
-    if (mode === 'preview') {
-      return container.querySelector('.markdown-preview-view');
+    const scrollers = [];
+    const addScroller = (element) => {
+      if (element && typeof element.addEventListener === 'function' && !scrollers.includes(element)) {
+        scrollers.push(element);
+      }
+    };
+
+    if (mode !== 'preview') {
+      addScroller(container.querySelector('.cm-scroller'));
+      return scrollers;
     }
-    return container.querySelector('.cm-scroller') || container.querySelector('.markdown-preview-view');
+
+    const preview = container.querySelector('.markdown-preview-view');
+    const readingView = container.querySelector('.markdown-reading-view');
+    addScroller(preview);
+    addScroller(readingView);
+    addScroller(container);
+
+    // Obsidian has used both the preview element and its view-content parent as
+    // the scroll owner. Bind the short ancestor chain so a theme/layout change
+    // cannot leave the active dash stuck on the opening chapter.
+    let ancestor = container.parentElement;
+    for (let depth = 0; ancestor && depth < 4; depth += 1) {
+      addScroller(ancestor);
+      ancestor = ancestor.parentElement;
+    }
+
+    return scrollers;
+  }
+
+  getViewScroller(container, view = null) {
+    const scrollers = this.getViewScrollers(container, view);
+    if (scrollers.length === 0) return null;
+    return scrollers.find((scroller) => {
+      const scrollTop = Number(scroller.scrollTop) || 0;
+      const scrollHeight = Number(scroller.scrollHeight) || 0;
+      const clientHeight = Number(scroller.clientHeight) || 0;
+      return scrollTop > 0 || scrollHeight > clientHeight + 1;
+    }) || scrollers[0];
   }
 
   clearFlashHighlights(container) {
@@ -1435,19 +1993,37 @@ class ChapterPipelinePlugin extends Plugin {
     try {
       const mode = view.getMode ? view.getMode() : (view.currentMode?.type || 'source');
       if (mode !== 'preview') {
-        const cm = view.editor?.cm || view.editMode?.editor?.cm;
-        if (cm && cm.scrollDOM) {
-          const topOffset = cm.scrollDOM.scrollTop + 50;
+        const visualHeadingLine = this.getLivePreviewHeadingLine(container, chapters);
+        if (visualHeadingLine !== null) return visualHeadingLine;
+
+        const cmCandidates = [
+          view.editor?.cm,
+          view.editMode?.editor?.cm,
+          view.editMode?.cm,
+          view.editor
+        ].filter(Boolean);
+        for (const cm of cmCandidates) {
+          if (typeof cm.lineBlockAtHeight !== 'function' || !cm.state?.doc?.lineAt) continue;
+          const scrollDOM = cm.scrollDOM || container?.querySelector('.cm-scroller');
+          if (!scrollDOM) continue;
+          const topOffset = Math.max(0, (scrollDOM.scrollTop || 0) + 50);
           const lineBlock = cm.lineBlockAtHeight(topOffset);
-          if (lineBlock) {
-            const doc = cm.state.doc;
-            const line = doc.lineAt(lineBlock.from);
+          if (!lineBlock) continue;
+          const line = cm.state.doc.lineAt(lineBlock.from);
+          if (line && Number.isInteger(line.number)) {
             return line.number - 1;
           }
         }
+
+        const editor = view.editor || view.editMode?.editor;
+        if (editor && typeof editor.getCursor === 'function') {
+          const cursor = editor.getCursor('from');
+          if (cursor && Number.isInteger(cursor.line)) return cursor.line;
+        }
       } else {
-        const scroller = view.contentEl?.querySelector('.markdown-preview-view');
-        if (!scroller) return 0;
+        const previewRoot = view.contentEl?.querySelector('.markdown-preview-view');
+        const scroller = this.getViewScroller(container, view) || previewRoot;
+        if (!previewRoot || !scroller) return 0;
         const scrollerRect = scroller.getBoundingClientRect();
         const activeBaseline = scrollerRect.top + 70;
 
@@ -1461,7 +2037,7 @@ class ChapterPipelinePlugin extends Plugin {
               break;
             }
           } else {
-            const section = scroller.querySelector(`.markdown-preview-section[data-line="${chap.line}"]`);
+            const section = previewRoot.querySelector(`.markdown-preview-section[data-line="${chap.line}"]`);
             if (section) {
               if (section.getBoundingClientRect().top <= activeBaseline) {
                 closestLine = chap.line;
@@ -1477,6 +2053,54 @@ class ChapterPipelinePlugin extends Plugin {
       // ignore
     }
     return 0;
+  }
+
+  getLivePreviewHeadingLine(container, chapters = []) {
+    const scroller = container?.querySelector('.cm-scroller');
+    if (!scroller || !chapters.length) return null;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const activeBaseline = scrollerRect.top + 70;
+    const renderedLines = Array.from(container.querySelectorAll('.cm-line, .cm-heading'));
+    let closestLine = null;
+    let closestTop = -Infinity;
+
+    for (const lineEl of renderedLines) {
+      const classNames = lineEl.classList
+        ? (typeof lineEl.classList[Symbol.iterator] === 'function'
+          ? Array.from(lineEl.classList)
+          : (lineEl.classList.values ? Array.from(lineEl.classList.values) : []))
+        : String(lineEl.className || '').split(/\s+/);
+      const levelMatch = classNames.map((name) => String(name).match(/^HyperMD-header-([1-6])$/)).find(Boolean);
+      const isHeading = Boolean(levelMatch) || classNames.includes('HyperMD-header') || classNames.includes('cm-heading');
+      if (!isHeading) continue;
+
+      const rect = lineEl.getBoundingClientRect();
+      if (rect.top > activeBaseline || rect.top < closestTop) continue;
+
+      const dataLine = lineEl.getAttribute?.('data-line');
+      const lineNumber = dataLine === null || dataLine === undefined ? NaN : parseInt(dataLine, 10);
+      let matchedChapter = Number.isInteger(lineNumber)
+        ? chapters.find((chapter) => chapter.line === lineNumber)
+        : null;
+
+      if (!matchedChapter) {
+        const level = levelMatch ? parseInt(levelMatch[1], 10) : null;
+        const renderedTitle = normalizeHeadingText(lineEl.textContent);
+        matchedChapter = chapters.find((chapter) => {
+          if (level && chapter.level !== level) return false;
+          const title = normalizeHeadingText(chapter.title);
+          const rawTitle = normalizeHeadingText(chapter.rawHeading || chapter.title);
+          return renderedTitle && (renderedTitle === title || renderedTitle === rawTitle || renderedTitle.includes(title) || title.includes(renderedTitle));
+        });
+      }
+
+      if (matchedChapter) {
+        closestTop = rect.top;
+        closestLine = matchedChapter.line;
+      }
+    }
+
+    return closestLine;
   }
 
   jumpToHeading(view, chap) {
@@ -1640,13 +2264,20 @@ class ChapterPipelinePlugin extends Plugin {
     console.log('Unloading Charter Pipeline Pro');
     if (this.refreshFrame !== null) cancelAnimationFrame(this.refreshFrame);
     if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    if (this.readingSaveTimer !== null) {
+      clearTimeout(this.readingSaveTimer);
+      this.readingSaveTimer = null;
+      this.saveSettings().catch(() => {});
+    }
     this.observers.forEach(obs => obs.disconnect());
     this.observers.clear();
     this.viewObservers.forEach(obs => obs.disconnect());
     this.viewObservers.clear();
     this.renderVersions.clear();
-    this.scrollBindings.forEach(({ scroller, handler }) => {
-      scroller.removeEventListener('scroll', handler);
+    this.scrollBindings.forEach(({ scrollers, scroller, handler }) => {
+      (scrollers || (scroller ? [scroller] : [])).forEach((boundScroller) => {
+        boundScroller?.removeEventListener?.('scroll', handler);
+      });
     });
     this.scrollBindings.clear();
     document.querySelectorAll('.codex-stepper-container').forEach(el => el.remove());
@@ -1666,4 +2297,3 @@ module.exports.ChapterSuggestModal = ChapterSuggestModal;
 module.exports.ChapterParser = ChapterParser;
 module.exports.SoundEngine = SoundEngine;
 module.exports.updateHierarchyFolding = updateHierarchyFolding;
-
