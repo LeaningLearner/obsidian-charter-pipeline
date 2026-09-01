@@ -336,6 +336,30 @@ class Setting {
     this.controls.push(slider);
     return this;
   }
+
+  addColorPicker(cb) {
+    const picker = {
+      value: '#3b82f6',
+      setValue: (val) => { picker.value = val; return picker; },
+      onChange: (fn) => { picker.changeHandler = fn; return picker; },
+    };
+    cb(picker);
+    this.controls.push(picker);
+    return this;
+  }
+
+  addButton(cb) {
+    const btn = {
+      text: '',
+      setButtonText: (val) => { btn.text = val; return btn; },
+      setCta: () => btn,
+      setWarning: () => btn,
+      onClick: (fn) => { btn.clickHandler = fn; return btn; },
+    };
+    cb(btn);
+    this.controls.push(btn);
+    return this;
+  }
 }
 
 const originalLoad = Module._load;
@@ -370,6 +394,9 @@ function createReadingHarness() {
   const body = new FakeElement();
   global.document = {
     body,
+    querySelectorAll: (...args) => body.querySelectorAll(...args),
+    querySelector: (...args) => body.querySelector(...args),
+    createElement: (tag) => new FakeElement({ tagName: tag }),
     addEventListener: (...args) => body.addEventListener(...args),
     removeEventListener: (...args) => body.removeEventListener(...args),
     elementsFromPoint: () => [],
@@ -1776,3 +1803,100 @@ test('active color is preserved across dashes, tooltips, and palette with a them
   assert.equal(modal.modalEl.style.getPropertyValue('--codex-active-color'), 'var(--interactive-accent, #3b82f6)');
   assert.equal(plugin.resolveActiveColor('#ec4899'), '#ec4899');
 });
+
+test('narrowThreshold custom setting is respected and not clamped to 380', async () => {
+  const { container, plugin, view } = createReadingHarness();
+  plugin.settings.narrowThreshold = 550;
+  container.clientWidth = 500;
+  await plugin.attachStepperToView(view);
+
+  const stepper = container.querySelector('.codex-stepper-container');
+  assert.ok(stepper.classList.contains('is-narrow'), 'stepper should be hidden when containerWidth < 550');
+
+  container.clientWidth = 580;
+  await plugin.attachStepperToView(view);
+  const updatedStepper = container.querySelector('.codex-stepper-container');
+  assert.ok(!updatedStepper.classList.contains('is-narrow'), 'stepper should be visible when containerWidth >= 550');
+});
+
+test('multi-view attachment isolates floating tooltips per view', async () => {
+  const harness1 = createReadingHarness();
+  const harness2 = createReadingHarness();
+  const plugin = harness1.plugin;
+
+  await plugin.attachStepperToView(harness1.view);
+  const tooltip1 = plugin.viewTooltips.get(harness1.view);
+  assert.ok(tooltip1, 'view 1 should have its own tooltip instance');
+
+  await plugin.attachStepperToView(harness2.view);
+  const tooltip2 = plugin.viewTooltips.get(harness2.view);
+  assert.ok(tooltip2, 'view 2 should have its own tooltip instance');
+  assert.notEqual(tooltip1, tooltip2, 'tooltips should be separate instances');
+
+  // Tooltip 1 should not have been removed when view 2 attached
+  const docBody = harness1.view.contentEl.ownerDocument?.body || global.document.body;
+  assert.ok(docBody.children.includes(tooltip1));
+
+  plugin.onunload();
+  assert.equal(plugin.viewTooltips.size, 0, 'viewTooltips map should be cleared on onunload');
+});
+
+test('fallback heading extractor ignores headings inside code blocks', async () => {
+  const { app, plugin } = createReadingHarness();
+  const file = { path: 'code-test.md' };
+  app.metadataCache.getFileCache = () => null; // force fallback extraction
+
+  const content = `# Real Heading 1
+
+Some text
+
+\`\`\`python
+# This is a Python comment, not a heading
+def foo():
+    pass
+\`\`\`
+
+~~~bash
+### This is a bash comment, not a heading
+echo "hello"
+~~~
+
+## Real Heading 2
+`;
+
+  const chapters = plugin.extractChapters(content, file);
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].title, 'Real Heading 1');
+  assert.equal(chapters[1].title, 'Real Heading 2');
+});
+
+test('custom active color picker resolution and cleanup command', async () => {
+  const { app, plugin } = createReadingHarness();
+  plugin.settings.activeColor = 'custom';
+  plugin.settings.customActiveColor = '#10b981';
+  assert.equal(plugin.resolveActiveColor('custom'), '#10b981');
+  assert.equal(plugin.resolveActiveColor('#a855f7'), '#a855f7');
+
+  // Reading state cleanup
+  plugin.settings.readingBookmarksEnabled = true;
+  plugin.settings.readingState = {
+    version: 1,
+    files: {
+      'existing.md': {
+        resume: { chapterId: 'h1:exist:0', title: 'Exist', updatedAt: 100 },
+        markers: {}
+      },
+      'deleted.md': {
+        resume: { chapterId: 'h1:del:0', title: 'Del', updatedAt: 50 },
+        markers: {}
+      }
+    }
+  };
+
+  app.vault.getAbstractFileByPath = (path) => path === 'existing.md' ? { path } : null;
+  const cleanedCount = plugin.cleanupOrphanedReadingState();
+  assert.equal(cleanedCount, 1);
+  assert.ok(plugin.settings.readingState.files['existing.md']);
+  assert.equal(plugin.settings.readingState.files['deleted.md'], undefined);
+});
+

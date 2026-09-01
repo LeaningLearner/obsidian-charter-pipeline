@@ -1,6 +1,6 @@
-data.json
 node_modules/
+*.zip
+data.json
 .DS_Store
-*.log
-.obsidian/
+Thumbs.db
 .superpowers/

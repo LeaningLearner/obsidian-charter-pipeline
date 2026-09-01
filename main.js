@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   ignoreFirstH1: false,
   showExcerpt: true,
   activeColor: '#3b82f6',
+  customActiveColor: '#3b82f6',
   narrowThreshold: 600,
   enableSound: true,
   soundVolume: 50,
@@ -64,8 +65,11 @@ const I18N = {
       '#8b5cf6': 'Violet (Geek)',
       '#f59e0b': 'Sunset Amber (Warm)',
       '#ec4899': 'Sakura Pink (Vibrant)',
-      'var(--interactive-accent)': 'Theme Accent Color'
+      'var(--interactive-accent)': 'Theme Accent Color',
+      'custom': 'Custom Color...'
     },
+    customColorName: 'Custom Active Indicator Color',
+    customColorDesc: 'Pick a custom color to highlight the currently active section.',
     narrowThresholdName: 'Narrow View Auto-Hide Threshold (px)',
     narrowThresholdDesc: 'Automatically hide the stepper when note pane width is below this threshold to prevent overlapping text.',
     soundSectionTitle: 'Tactile Sound Effects',
@@ -77,6 +81,11 @@ const I18N = {
     readingSectionTitle: 'Reading Progress & Bookmarks',
     readingBookmarksEnabledName: 'Enable Reading Progress & Bookmarks',
     readingBookmarksEnabledDesc: 'Save the last chapter you read and add optional chapter bookmarks. Stored only in Charter Pipeline plugin data; your Markdown files are never changed.',
+    cleanupReadingBookmarksName: 'Clean Up Invalid Bookmark Records',
+    cleanupReadingBookmarksDesc: 'Remove saved reading positions and bookmarks for deleted or moved files to keep storage clean.',
+    cleanupButtonText: 'Clean up now',
+    cleanupSuccessNotice: 'Cleaned up {count} invalid note record(s).',
+    cleanupNoneNotice: 'No invalid records found. Everything is up to date.',
     revisitLabel: 'Revisit',
     importantLabel: 'Important',
     markForRevisit: 'Mark for revisit',
@@ -91,6 +100,7 @@ const I18N = {
     commandToggleRevisit: 'Charter Pipeline: Toggle revisit bookmark for current chapter',
     commandToggleImportant: 'Charter Pipeline: Toggle important bookmark for current chapter',
     commandClearReadingBookmarks: 'Charter Pipeline: Clear reading progress & bookmarks for current note',
+    commandCleanupReadingBookmarks: 'Charter Pipeline: Clean up invalid reading progress & bookmarks',
     resumeAvailable: 'Resume available: {title}',
     resumeUnavailable: 'No saved reading position in this note.',
     resumeNotFound: 'The saved chapter is no longer available.',
@@ -137,8 +147,11 @@ const I18N = {
       '#8b5cf6': '紫罗兰 (极客紫)',
       '#f59e0b': '日落琥珀 (温和橙)',
       '#ec4899': '樱花粉 (活力粉)',
-      'var(--interactive-accent)': '跟随主题强调色'
+      'var(--interactive-accent)': '跟随主题强调色',
+      'custom': '自定义颜色…'
     },
+    customColorName: '自定义激活高亮颜色',
+    customColorDesc: '自由挑选任意色彩作为当前阅读章节的高亮颜色。',
     narrowThresholdName: '分屏/窄屏自动隐藏宽度阈值 (px)',
     narrowThresholdDesc: '当笔记窗口宽度小于该像素时，横线流自动隐藏以避免遮挡正文。',
     soundSectionTitle: '极简拟物微动音效',
@@ -150,6 +163,11 @@ const I18N = {
     readingSectionTitle: '阅读断点与章节书签',
     readingBookmarksEnabledName: '开启阅读断点与章节书签',
     readingBookmarksEnabledDesc: '保存上次阅读章节，并可为章节添加书签。数据仅保存在 Charter Pipeline 插件配置中，不会修改 Markdown 文件。',
+    cleanupReadingBookmarksName: '清理已失效的笔记记录',
+    cleanupReadingBookmarksDesc: '扫描并移除已删除或移出库的笔记所遗留的阅读断点与书签数据，保持配置数据轻量。',
+    cleanupButtonText: '立即清理',
+    cleanupSuccessNotice: '已清理 {count} 条失效笔记的记录。',
+    cleanupNoneNotice: '未发现失效记录，当前配置非常整洁。',
     revisitLabel: '稍后回看',
     importantLabel: '重点',
     markForRevisit: '标记为稍后回看',
@@ -164,6 +182,7 @@ const I18N = {
     commandToggleRevisit: 'Charter Pipeline：切换当前章节的稍后回看书签',
     commandToggleImportant: 'Charter Pipeline：切换当前章节的重点书签',
     commandClearReadingBookmarks: 'Charter Pipeline：清除当前笔记的阅读断点与书签',
+    commandCleanupReadingBookmarks: 'Charter Pipeline：清理已失效的阅读断点与书签',
     resumeAvailable: '可恢复上次阅读：{title}',
     resumeUnavailable: '这篇笔记没有保存的阅读位置。',
     resumeNotFound: '保存的章节已不存在，无法恢复。',
@@ -666,8 +685,23 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
             this.plugin.settings.readingBookmarksEnabled = value;
             await this.plugin.saveSettings();
             this.plugin.updateAllMarkdownViews();
+            this.display();
           })
       );
+
+    if (this.plugin.settings.readingBookmarksEnabled === true) {
+      new Setting(containerEl)
+        .setName(strings.cleanupReadingBookmarksName)
+        .setDesc(strings.cleanupReadingBookmarksDesc)
+        .addButton((btn) =>
+          btn
+            .setButtonText(strings.cleanupButtonText)
+            .onClick(() => {
+              const count = this.plugin.cleanupOrphanedReadingState();
+              this.plugin.showNotice(count > 0 ? t('cleanupSuccessNotice', { count }) : t('cleanupNoneNotice'));
+            })
+        );
+    }
 
     const levelSetting = new Setting(containerEl)
       .setName(strings.maxLevelName)
@@ -692,14 +726,29 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
         for (const [key, val] of Object.entries(strings.activeColorOptions)) {
           drop.addOption(key, val);
         }
+        const isKnown = Object.keys(strings.activeColorOptions).includes(this.plugin.settings.activeColor);
         drop
-          .setValue(this.plugin.settings.activeColor)
+          .setValue(isKnown ? this.plugin.settings.activeColor : 'custom')
           .onChange(async (value) => {
             this.plugin.settings.activeColor = value;
             await this.plugin.saveSettings();
             this.plugin.updateAllMarkdownViews();
+            this.display();
           });
       });
+
+    const isCustomColor = this.plugin.settings.activeColor === 'custom' || !Object.keys(strings.activeColorOptions).includes(this.plugin.settings.activeColor);
+    if (isCustomColor && typeof colorSetting.addColorPicker === 'function') {
+      colorSetting.addColorPicker((picker) =>
+        picker
+          .setValue(this.plugin.settings.customActiveColor || '#3b82f6')
+          .onChange(async (value) => {
+            this.plugin.settings.customActiveColor = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          })
+      );
+    }
 
     new Setting(containerEl)
       .setName(strings.narrowThresholdName)
@@ -821,6 +870,7 @@ class ChapterPipelinePlugin extends Plugin {
     this.viewObservers = new Map();
     this.renderVersions = new Map();
     this.scrollBindings = new Map();
+    this.viewTooltips = new Map();
     this.soundEngine = new SoundEngine();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, { readingState: createEmptyReadingState() });
     this.refreshFrame = null;
@@ -990,6 +1040,19 @@ class ChapterPipelinePlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: 'charter-pipeline-cleanup-reading-bookmarks',
+      name: t('commandCleanupReadingBookmarks'),
+      checkCallback: (checking) => {
+        if (this.settings.readingBookmarksEnabled !== true) return false;
+        if (!checking) {
+          const count = this.cleanupOrphanedReadingState();
+          this.showNotice(count > 0 ? t('cleanupSuccessNotice', { count }) : t('cleanupNoneNotice'));
+        }
+        return true;
+      }
+    });
+
     this.app.workspace.onLayoutReady(() => {
       this.scheduleUpdateAllMarkdownViews();
     });
@@ -1002,6 +1065,9 @@ class ChapterPipelinePlugin extends Plugin {
     }
     if (this.settings.activeColor === '#10b981') {
       this.settings.activeColor = '#3b82f6';
+    }
+    if (!this.settings.customActiveColor) {
+      this.settings.customActiveColor = '#3b82f6';
     }
     if (this.settings.enableSound === undefined) {
       this.settings.enableSound = true;
@@ -1043,6 +1109,24 @@ class ChapterPipelinePlugin extends Plugin {
     return this.settings.readingState;
   }
 
+  cleanupOrphanedReadingState() {
+    const readingState = this.ensureReadingState();
+    if (!readingState?.files) return 0;
+    let cleanedCount = 0;
+    const paths = Object.keys(readingState.files);
+    for (const path of paths) {
+      const file = this.app?.vault?.getAbstractFileByPath ? this.app.vault.getAbstractFileByPath(path) : null;
+      if (!file) {
+        delete readingState.files[path];
+        cleanedCount++;
+      }
+    }
+    if (cleanedCount > 0) {
+      this.saveSettings().catch(() => {});
+    }
+    return cleanedCount;
+  }
+
   isReadingBookmarksEnabled() {
     return this.settings?.readingBookmarksEnabled === true;
   }
@@ -1050,6 +1134,9 @@ class ChapterPipelinePlugin extends Plugin {
   resolveActiveColor(activeColor) {
     const color = typeof activeColor === 'string' ? activeColor.trim() : '';
     if (!color) return '#3b82f6';
+    if (color === 'custom') {
+      return this.settings?.customActiveColor || '#3b82f6';
+    }
     if (/^var\(\s*--interactive-accent\s*\)$/i.test(color)) {
       return 'var(--interactive-accent, #3b82f6)';
     }
@@ -1335,15 +1422,23 @@ class ChapterPipelinePlugin extends Plugin {
     if (!headings || headings.length === 0) {
       headings = [];
       const lines = content ? content.split(/\r?\n/) : [];
+      let inCodeBlock = false;
       for (let i = 0; i < lines.length; i++) {
-        const match = lines[i].match(/^(#{1,6})\s+(.+)$/);
+        const line = lines[i];
+        const trimmed = line.trim();
+        if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+          inCodeBlock = !inCodeBlock;
+          continue;
+        }
+        if (inCodeBlock) continue;
+        const match = line.match(/^(#{1,6})\s+(.+)$/);
         if (match) {
           headings.push({
             heading: match[2].trim(),
             level: match[1].length,
             position: {
               start: { line: i, col: 0, offset: 0 },
-              end: { line: i, col: lines[i].length, offset: 0 }
+              end: { line: i, col: line.length, offset: 0 }
             }
           });
         }
@@ -1458,8 +1553,11 @@ class ChapterPipelinePlugin extends Plugin {
     const existing = container.querySelector('.codex-stepper-container');
     if (existing) existing.remove();
 
-    const existingTooltip = document.body.querySelector('.codex-floating-tooltip');
-    if (existingTooltip) existingTooltip.remove();
+    const oldTooltip = this.viewTooltips.get(view);
+    if (oldTooltip) {
+      oldTooltip.remove();
+      this.viewTooltips.delete(view);
+    }
 
     if (this.observers.has(container)) {
       this.observers.get(container).disconnect();
@@ -1508,22 +1606,38 @@ class ChapterPipelinePlugin extends Plugin {
 
     const count = chapters.length;
 
-    // 2. 创建悬浮章节名独立气泡浮层（直接挂载到 document.body，采用全局屏幕坐标精准对齐）
-    const floatingTooltip = document.body.createDiv({ cls: 'codex-floating-tooltip' });
-    floatingTooltip.style.setProperty('--codex-active-color', activeColor);
-    if (this.settings.tooltipGlassmorphism === false) {
-      floatingTooltip.classList.add('is-solid');
+    // 2. 创建悬浮章节名独立气泡浮层（挂载到当前容器所在文档的 body，多窗口/多分屏完美隔离）
+    const doc = container.ownerDocument || (typeof document !== 'undefined' ? document : null);
+    const targetBody = doc ? (doc.body || doc) : (typeof document !== 'undefined' ? document.body : null);
+    const floatingTooltip = (targetBody && typeof targetBody.createDiv === 'function')
+      ? targetBody.createDiv({ cls: 'codex-floating-tooltip' })
+      : ((doc && typeof doc.createElement === 'function')
+        ? (() => {
+            const el = doc.createElement('div');
+            el.className = 'codex-floating-tooltip';
+            if (targetBody && typeof targetBody.appendChild === 'function') {
+              targetBody.appendChild(el);
+            }
+            return el;
+          })()
+        : (typeof document !== 'undefined' && document.body?.createDiv ? document.body.createDiv({ cls: 'codex-floating-tooltip' }) : null));
+
+    if (floatingTooltip) {
+      this.viewTooltips.set(view, floatingTooltip);
+      floatingTooltip.style.setProperty('--codex-active-color', activeColor);
+      if (this.settings.tooltipGlassmorphism === false) {
+        floatingTooltip.classList.add('is-solid');
+      }
     }
 
     // 3. 动态留白空间感知与绝对防触碰正文计算
     const updateGutterDimensions = () => {
       const containerWidth = container.clientWidth || 0;
-      // 只有在视口极度狭窄（< 360px，如极小手机或超窄卡片分栏）时才隐藏，避免在普通分屏或打开双侧边栏时误隐藏
-      const threshold = Math.min(this.settings.narrowThreshold || 380, 380);
+      const threshold = Number.isFinite(this.settings.narrowThreshold) ? this.settings.narrowThreshold : 600;
 
       if (containerWidth > 0 && containerWidth < threshold) {
         stepperContainer.classList.add('is-narrow');
-        floatingTooltip.classList.remove('is-visible');
+        if (floatingTooltip) floatingTooltip.classList.remove('is-visible');
         return;
       }
 
@@ -1664,6 +1778,7 @@ class ChapterPipelinePlugin extends Plugin {
 
       // 鼠标悬浮：横线屏幕绝对中心点 100% 对齐气泡垂直几何中心
       dashItem.addEventListener('mouseenter', () => {
+        if (!floatingTooltip) return;
         const itemRect = dashItem.getBoundingClientRect();
 
         // 横线条的精确屏幕垂直几何中点
@@ -1672,16 +1787,18 @@ class ChapterPipelinePlugin extends Plugin {
         const tooltipWidth = floatingTooltip.offsetWidth || 290;
         let leftX;
 
+        const targetWindow = (doc && doc.defaultView) || (typeof window !== 'undefined' ? window : null);
+        const winWidth = (targetWindow && targetWindow.innerWidth) ? targetWindow.innerWidth : 1200;
+        const winHeight = (targetWindow && targetWindow.innerHeight) ? targetWindow.innerHeight : 800;
+
         if (isRightDock) {
           floatingTooltip.classList.add('dock-right');
           leftX = Math.max(10, itemRect.left - tooltipWidth - 12);
         } else {
           floatingTooltip.classList.remove('dock-right');
-          const winWidth = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1200;
           leftX = Math.min(winWidth - tooltipWidth - 10, itemRect.right + 12);
         }
 
-        const winHeight = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 800;
         const tooltipHeight = floatingTooltip.offsetHeight || 140;
         const minCenterY = tooltipHeight / 2 + 12;
         const maxCenterY = winHeight - tooltipHeight / 2 - 12;
@@ -1727,7 +1844,9 @@ class ChapterPipelinePlugin extends Plugin {
       });
 
       dashItem.addEventListener('mouseleave', () => {
-        floatingTooltip.classList.remove('is-visible');
+        if (floatingTooltip) {
+          floatingTooltip.classList.remove('is-visible');
+        }
       });
 
       const navigateToChapter = () => {
@@ -1911,8 +2030,15 @@ class ChapterPipelinePlugin extends Plugin {
     if (this.viewObservers.has(container) || typeof MutationObserver === 'undefined') return;
 
     let refreshQueued = false;
+    let clearFlashQueued = false;
     const observer = new MutationObserver(() => {
-      this.clearFlashHighlights(container);
+      if (!clearFlashQueued) {
+        clearFlashQueued = true;
+        requestAnimationFrame(() => {
+          clearFlashQueued = false;
+          this.clearFlashHighlights(container);
+        });
+      }
       if (refreshQueued || container.querySelector('.codex-stepper-container')) return;
       if (!this.getViewScroller(container, view)) return;
 
@@ -2408,8 +2534,17 @@ class ChapterPipelinePlugin extends Plugin {
       });
     });
     this.scrollBindings.clear();
-    document.querySelectorAll('.codex-stepper-container').forEach(el => el.remove());
-    document.querySelectorAll('.codex-floating-tooltip').forEach(el => el.remove());
+    if (this.viewTooltips) {
+      this.viewTooltips.forEach((tooltip) => tooltip?.remove?.());
+      this.viewTooltips.clear();
+    }
+    if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+      document.querySelectorAll('.codex-stepper-container').forEach(el => el.remove());
+      document.querySelectorAll('.codex-floating-tooltip').forEach(el => el.remove());
+    } else if (typeof document !== 'undefined' && document.body && typeof document.body.querySelectorAll === 'function') {
+      document.body.querySelectorAll('.codex-stepper-container').forEach(el => el.remove());
+      document.body.querySelectorAll('.codex-floating-tooltip').forEach(el => el.remove());
+    }
   }
 }
 
