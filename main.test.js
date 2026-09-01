@@ -368,7 +368,12 @@ Module._load = originalLoad;
 
 function createReadingHarness() {
   const body = new FakeElement();
-  global.document = { body };
+  global.document = {
+    body,
+    addEventListener: (...args) => body.addEventListener(...args),
+    removeEventListener: (...args) => body.removeEventListener(...args),
+    elementsFromPoint: () => [],
+  };
   global.window = {
     innerWidth: 1200,
     innerHeight: 800,
@@ -463,7 +468,21 @@ test('Reading View renders the chapter pipeline and tracks its visible scroll co
   assert.ok(container.querySelector('.codex-stepper-container'));
   assert.equal(scroller.listeners.get('scroll')?.length, 1);
   assert.equal(sourceScroller.listeners.get('scroll'), undefined);
-  assert.equal(container.querySelectorAll('.codex-dash-item').length, 2);
+  const dashes = container.querySelectorAll('.codex-dash-item');
+  assert.equal(dashes.length, 2);
+  assert.equal(dashes[0].getAttribute('data-chapter-order'), '1');
+  assert.equal(dashes[1].getAttribute('data-chapter-order'), '2');
+});
+
+test('chapter order labels are opt-in and disabled by default', async () => {
+  const disabledHarness = createReadingHarness();
+  await disabledHarness.plugin.attachStepperToView(disabledHarness.view);
+  assert.equal(disabledHarness.container.querySelector('.codex-stepper-container').classList.contains('show-chapter-order'), false);
+
+  const enabledHarness = createReadingHarness();
+  enabledHarness.plugin.settings.showChapterOrder = true;
+  await enabledHarness.plugin.attachStepperToView(enabledHarness.view);
+  assert.equal(enabledHarness.container.querySelector('.codex-stepper-container').classList.contains('show-chapter-order'), true);
 });
 
 test('Reading View active tracking ignores the hidden editor state', () => {
@@ -480,6 +499,55 @@ test('Reading View active tracking ignores the hidden editor state', () => {
   const chapters = [
     { line: 0, headingIndex: 0 },
     { line: 4, headingIndex: 1 },
+  ];
+
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+});
+
+test('Obsidian reading mode aliases use Reading View tracking and scroll binding', async () => {
+  const { container, plugin, scroller, sourceScroller, view } = createReadingHarness();
+  view.getMode = () => 'reading';
+  scroller.scrollTop = 300;
+  const chapters = [
+    { line: 0, headingIndex: 0 },
+    { line: 4, headingIndex: 1 },
+  ];
+
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+  await plugin.attachStepperToView(view);
+  assert.equal(scroller.listeners.get('scroll')?.length, 1);
+  assert.equal(sourceScroller.listeners.get('scroll'), undefined);
+});
+
+test('Reading View uses the section beneath the viewport baseline when headings are virtualized', () => {
+  const { container, plugin, scroller, view } = createReadingHarness();
+  const section = scroller.append(new FakeElement({
+    classes: ['markdown-preview-section'],
+    attributes: { 'data-line': '16' },
+  }));
+  const visibleContent = section.append(new FakeElement({ tagName: 'p', textContent: 'Visible section content' }));
+  global.document.elementsFromPoint = () => [visibleContent];
+  const chapters = [
+    { line: 0, headingIndex: 0 },
+    { line: 8, headingIndex: 1 },
+    { line: 16, headingIndex: 2 },
+  ];
+
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 16);
+});
+
+test('Reading View prefers visible heading geometry over a stale first-section data line', () => {
+  const { container, plugin, scroller, view } = createReadingHarness();
+  scroller.scrollTop = 300;
+  const staleSection = scroller.append(new FakeElement({
+    classes: ['markdown-preview-section'],
+    attributes: { 'data-line': '0' },
+  }));
+  const visibleContent = staleSection.append(new FakeElement({ tagName: 'p', textContent: 'Current chapter content' }));
+  global.document.elementsFromPoint = () => [visibleContent];
+  const chapters = [
+    { line: 0, headingIndex: 0, level: 1, title: 'First', rawHeading: 'First' },
+    { line: 4, headingIndex: 1, level: 2, title: 'Second', rawHeading: 'Second' },
   ];
 
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
@@ -508,6 +576,20 @@ test('Reading View tracks the scroll-owning parent when Obsidian moves scrolling
   await plugin.attachStepperToView(view);
   assert.equal(outerScroller.listeners.get('scroll')?.length, 1);
   assert.equal(container.querySelectorAll('.codex-dash-item')[1].classList.contains('active'), true);
+});
+
+test('Reading View prioritizes the parent that is actually scrolling over a long preview child', () => {
+  const { container, plugin, scroller, view } = createReadingHarness();
+  const outerScroller = new FakeElement({ classes: ['view-content'] });
+  outerScroller.clientHeight = 650;
+  outerScroller.scrollHeight = 2400;
+  outerScroller.scrollTop = 300;
+  outerScroller.append(container);
+  scroller.clientHeight = 650;
+  scroller.scrollHeight = 2400;
+  scroller.scrollTop = 0;
+
+  assert.equal(plugin.getViewScroller(container, view), outerScroller);
 });
 
 test('Live Preview active tracking uses the last visible heading instead of chapter zero', () => {
@@ -771,6 +853,7 @@ test('Settings load new default properties with backward compatibility', async (
   assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
   assert.equal(plugin.settings.showProgressRail, false);
   assert.equal(plugin.settings.tooltipGlassmorphism, true);
+  assert.equal(plugin.settings.showChapterOrder, false);
   assert.equal(plugin.settings.readingBookmarksEnabled, false);
   assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
 });
@@ -789,6 +872,7 @@ test('Settings load preserves existing custom values', async () => {
   assert.equal(plugin.settings.hierarchyMode, 'all');
   assert.equal(plugin.settings.showProgressRail, true);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
+  assert.equal(plugin.settings.showChapterOrder, false);
   assert.equal(plugin.settings.readingBookmarksEnabled, false);
   assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
 });
@@ -847,6 +931,13 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   assert.equal(readingControl.value, false);
   await readingControl.changeHandler(true);
   assert.equal(plugin.settings.readingBookmarksEnabled, true);
+
+  const orderSetting = Setting.instances.find(s => s.name.includes('Active Chapter Number') || s.name.includes('当前章节序号'));
+  assert.ok(orderSetting, 'showChapterOrder toggle setting should be rendered');
+  const orderControl = orderSetting.controls[0];
+  assert.equal(orderControl.value, false);
+  await orderControl.changeHandler(true);
+  assert.equal(plugin.settings.showChapterOrder, true);
 });
 
 test('ChapterSuggestModal provides items, search text, renders badge/title/excerpt, and handles selection with sound', () => {

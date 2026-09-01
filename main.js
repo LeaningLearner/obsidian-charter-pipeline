@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   hierarchyMode: 'hover-expand',
   showProgressRail: false,
   tooltipGlassmorphism: true,
+  showChapterOrder: false,
   readingBookmarksEnabled: false,
   readingState: {
     version: 1,
@@ -46,6 +47,8 @@ const I18N = {
     showProgressRailDesc: 'Display a smooth magnetic vertical progress guide line indicating reading position.',
     tooltipGlassmorphismName: 'Tooltip Glassmorphism & Spring Physics',
     tooltipGlassmorphismDesc: 'Enable backdrop blur glassmorphism and spring overshoot animations for hover popovers.',
+    showChapterOrderName: 'Show Active Chapter Number',
+    showChapterOrderDesc: 'Display the active chapter order number beside its highlighted dash. Disabled by default for a cleaner outline.',
     maxLevelName: 'Max Heading Level',
     maxLevelDesc: 'Filter deeper subheadings (e.g. choose H1~H3 to hide H4~H6).',
     maxLevelOptions: {
@@ -117,6 +120,8 @@ const I18N = {
     showProgressRailDesc: '在横线左侧显示一条极简平滑的垂直微光导轨，实时指示当前章节阅读进度。',
     tooltipGlassmorphismName: '毛玻璃质感与弹簧动效',
     tooltipGlassmorphismDesc: '开启悬浮气泡毛玻璃模糊背景 (Backdrop Blur) 与拟物弹簧微动进场动效。',
+    showChapterOrderName: '显示当前章节序号',
+    showChapterOrderDesc: '在活动高亮横线旁显示当前章节在本笔记大纲中的序号。默认关闭，保持界面简洁。',
     maxLevelName: '最大展示标题层级',
     maxLevelDesc: '例如设为 2 则只展示 H1~H2 章节，过滤更深层级的子小节。',
     maxLevelOptions: {
@@ -636,6 +641,19 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName(strings.showChapterOrderName)
+      .setDesc(strings.showChapterOrderDesc)
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showChapterOrder === true)
+          .onChange(async (value) => {
+            this.plugin.settings.showChapterOrder = value;
+            await this.plugin.saveSettings();
+            this.plugin.updateAllMarkdownViews();
+          })
+      );
+
     containerEl.createEl('h3', { text: strings.readingSectionTitle });
 
     new Setting(containerEl)
@@ -1002,6 +1020,9 @@ class ChapterPipelinePlugin extends Plugin {
     }
     if (this.settings.tooltipGlassmorphism === undefined) {
       this.settings.tooltipGlassmorphism = true;
+    }
+    if (this.settings.showChapterOrder === undefined) {
+      this.settings.showChapterOrder = false;
     }
     if (this.settings.readingBookmarksEnabled === undefined) {
       this.settings.readingBookmarksEnabled = false;
@@ -1449,7 +1470,7 @@ class ChapterPipelinePlugin extends Plugin {
       const binding = this.scrollBindings.get(container);
       const boundScrollers = binding?.scrollers || (binding?.scroller ? [binding.scroller] : []);
       if (binding?.handler) {
-        boundScrollers.forEach((scroller) => scroller?.removeEventListener?.('scroll', binding.handler));
+        boundScrollers.forEach((scroller) => scroller?.removeEventListener?.('scroll', binding.handler, true));
       }
       this.scrollBindings.delete(container);
     }
@@ -1470,6 +1491,9 @@ class ChapterPipelinePlugin extends Plugin {
     }
     const hierarchyMode = this.settings.hierarchyMode || 'all';
     stepperContainer.classList.add(`hierarchy-mode-${hierarchyMode}`);
+    if (this.settings.showChapterOrder === true) {
+      stepperContainer.classList.add('show-chapter-order');
+    }
     const activeColor = this.resolveActiveColor(this.settings.activeColor);
     stepperContainer.style.setProperty('--codex-active-color', activeColor);
     const track = stepperContainer.createDiv({ cls: 'codex-stepper-track' });
@@ -1616,7 +1640,10 @@ class ChapterPipelinePlugin extends Plugin {
     chapters.forEach((chap, i) => {
       const dashItem = track.createDiv({
         cls: `codex-dash-item level-${Math.min(chap.level, 6)}`,
-        attr: { 'data-line': chap.line }
+        attr: {
+          'data-line': chap.line,
+          'data-chapter-order': String(i + 1)
+        }
       });
 
       // 散落横线条
@@ -1763,7 +1790,6 @@ class ChapterPipelinePlugin extends Plugin {
           break;
         }
       }
-
       // 滚动跨越新章节时触发机械转轮刻度轻音
       if (activeIdx !== previousActiveIdx) {
         if (previousActiveIdx !== -1) {
@@ -1805,14 +1831,25 @@ class ChapterPipelinePlugin extends Plugin {
 
     const scrollers = this.getViewScrollers(container, view);
     if (scrollers.length > 0) {
-      scrollers.forEach((scroller) => scroller.addEventListener('scroll', throttledScroll, { passive: true }));
+      // `scroll` does not bubble. Capture it from every known view ancestor so
+      // active tracking still updates when a theme or Obsidian version moves
+      // the actual scroll owner inside that chain.
+      scrollers.forEach((scroller) => scroller.addEventListener('scroll', throttledScroll, { passive: true, capture: true }));
       this.scrollBindings.set(container, { scrollers, handler: throttledScroll });
     }
   }
 
+  isReadingMode(view, container = null) {
+    const mode = view?.getMode ? view.getMode() : view?.currentMode?.type;
+    if (mode === 'preview' || mode === 'reading' || mode === 'read') return true;
+    if (mode) return false;
+    // Keep working across Obsidian releases that rename the public mode while
+    // retaining the Reading View DOM structure.
+    return Boolean(container?.querySelector?.('.markdown-preview-view')) && !container?.querySelector?.('.cm-editor');
+  }
+
   getViewScrollers(container, view = null) {
     if (!container) return [];
-    const mode = view?.getMode ? view.getMode() : view?.currentMode?.type;
     const scrollers = [];
     const addScroller = (element) => {
       if (element && typeof element.addEventListener === 'function' && !scrollers.includes(element)) {
@@ -1820,7 +1857,7 @@ class ChapterPipelinePlugin extends Plugin {
       }
     };
 
-    if (mode !== 'preview') {
+    if (!this.isReadingMode(view, container)) {
       addScroller(container.querySelector('.cm-scroller'));
       return scrollers;
     }
@@ -1840,17 +1877,24 @@ class ChapterPipelinePlugin extends Plugin {
       ancestor = ancestor.parentElement;
     }
 
+    // Reading View may be re-parented by a layout/theme plugin. In that case
+    // the scroll owner can sit outside the short view ancestor chain. A
+    // capture listener on the document sees those native scroll events too,
+    // while the rAF throttle in attachStepperToView keeps the work bounded.
+    if (typeof document !== 'undefined') addScroller(document);
+
     return scrollers;
   }
 
   getViewScroller(container, view = null) {
     const scrollers = this.getViewScrollers(container, view);
     if (scrollers.length === 0) return null;
+    const activeScroller = scrollers.find((scroller) => (Number(scroller.scrollTop) || 0) > 0);
+    if (activeScroller) return activeScroller;
     return scrollers.find((scroller) => {
-      const scrollTop = Number(scroller.scrollTop) || 0;
       const scrollHeight = Number(scroller.scrollHeight) || 0;
       const clientHeight = Number(scroller.clientHeight) || 0;
-      return scrollTop > 0 || scrollHeight > clientHeight + 1;
+      return scrollHeight > clientHeight + 1;
     }) || scrollers[0];
   }
 
@@ -1989,10 +2033,91 @@ class ChapterPipelinePlugin extends Plugin {
     return null;
   }
 
+  getReadingSectionLineAtBaseline(view, container, chapters = []) {
+    const previewRoot = view?.contentEl?.querySelector('.markdown-preview-view');
+    const scroller = this.getViewScroller(container, view) || previewRoot;
+    const domDocument = typeof document !== 'undefined' ? document : null;
+    if (!previewRoot || !scroller || !domDocument || typeof domDocument.elementsFromPoint !== 'function') return null;
+
+    const viewportRect = scroller.getBoundingClientRect();
+    const previewRect = previewRoot.getBoundingClientRect();
+    const left = Math.max(viewportRect.left + 16, previewRect.left + 40);
+    const right = Math.min(viewportRect.right - 16, previewRect.right - 40);
+    if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) return null;
+
+    const y = viewportRect.top + 70;
+    const xPositions = [0.2, 0.5, 0.8].map((ratio) => left + ((right - left) * ratio));
+    const isInsidePreview = (element) => {
+      let current = element;
+      while (current) {
+        if (current === previewRoot) return true;
+        current = current.parentElement;
+      }
+      return false;
+    };
+    const findSection = (element) => {
+      let current = element;
+      while (current && current !== previewRoot) {
+        const isPreviewSection = current.classList?.contains?.('markdown-preview-section');
+        const line = isPreviewSection ? parseInt(current.getAttribute?.('data-line'), 10) : NaN;
+        if (Number.isInteger(line)) return line;
+        current = current.parentElement;
+      }
+      return null;
+    };
+
+    for (const x of xPositions) {
+      const elements = domDocument.elementsFromPoint(x, y) || [];
+      for (const element of elements) {
+        if (!isInsidePreview(element)) continue;
+        const sectionLine = findSection(element);
+        if (!Number.isInteger(sectionLine)) continue;
+
+        let chapterLine = null;
+        for (const chapter of chapters) {
+          if (chapter.line <= sectionLine) chapterLine = chapter.line;
+          else break;
+        }
+        return chapterLine;
+      }
+    }
+
+    return null;
+  }
+
+  getVisibleReadingHeadingLine(view, container, chapters = []) {
+    const previewRoot = view?.contentEl?.querySelector('.markdown-preview-view');
+    const scroller = this.getViewScroller(container, view) || previewRoot;
+    if (!previewRoot || !scroller || !chapters.length) return null;
+
+    const scrollerRect = scroller.getBoundingClientRect?.();
+    if (!scrollerRect || !Number.isFinite(scrollerRect.top)) return null;
+    const activeBaseline = scrollerRect.top + 70;
+    const seenHeadings = new Set();
+    let visibleLine = null;
+
+    // A markdown-preview-section's data-line is only its rendered chunk's
+    // start line. Long notes can keep that value at 0 even after scrolling
+    // far into the note. Real heading geometry is authoritative whenever the
+    // heading is mounted, so use it before the chunk-line fallback.
+    for (const chapter of chapters) {
+      const heading = this.getReadingHeading(view, chapter);
+      if (!heading || seenHeadings.has(heading)) continue;
+      seenHeadings.add(heading);
+
+      const headingRect = heading.getBoundingClientRect?.();
+      if (!headingRect || !Number.isFinite(headingRect.top)) continue;
+      if (headingRect.top <= activeBaseline + 2) {
+        visibleLine = chapter.line;
+      }
+    }
+
+    return visibleLine;
+  }
+
   getCurrentEditorTopLine(view, container, chapters = []) {
     try {
-      const mode = view.getMode ? view.getMode() : (view.currentMode?.type || 'source');
-      if (mode !== 'preview') {
+      if (!this.isReadingMode(view, container)) {
         const visualHeadingLine = this.getLivePreviewHeadingLine(container, chapters);
         if (visualHeadingLine !== null) return visualHeadingLine;
 
@@ -2024,6 +2149,10 @@ class ChapterPipelinePlugin extends Plugin {
         const previewRoot = view.contentEl?.querySelector('.markdown-preview-view');
         const scroller = this.getViewScroller(container, view) || previewRoot;
         if (!previewRoot || !scroller) return 0;
+        const visibleHeadingLine = this.getVisibleReadingHeadingLine(view, container, chapters);
+        if (visibleHeadingLine !== null) return visibleHeadingLine;
+        const sectionLine = this.getReadingSectionLineAtBaseline(view, container, chapters);
+        if (sectionLine !== null) return sectionLine;
         const scrollerRect = scroller.getBoundingClientRect();
         const activeBaseline = scrollerRect.top + 70;
 
@@ -2125,8 +2254,7 @@ class ChapterPipelinePlugin extends Plugin {
       // ignore
     }
 
-    const mode = targetView.getMode ? targetView.getMode() : (targetView.currentMode?.type || 'source');
-    if (mode === 'preview') {
+    if (this.isReadingMode(targetView, targetView.contentEl)) {
       const previewScroller = targetView.contentEl?.querySelector('.markdown-preview-view');
       const previewMode = targetView.currentMode || targetView.previewMode;
 
@@ -2276,7 +2404,7 @@ class ChapterPipelinePlugin extends Plugin {
     this.renderVersions.clear();
     this.scrollBindings.forEach(({ scrollers, scroller, handler }) => {
       (scrollers || (scroller ? [scroller] : [])).forEach((boundScroller) => {
-        boundScroller?.removeEventListener?.('scroll', handler);
+        boundScroller?.removeEventListener?.('scroll', handler, true);
       });
     });
     this.scrollBindings.clear();

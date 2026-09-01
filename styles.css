@@ -296,6 +296,27 @@ body .workspace-leaf .mod-highlighted {
   background-color: var(--codex-active-color, #3b82f6) !important;
 }
 
+/* 当前项标注其在本笔记大纲中的序号。横线本身依然保持极简，但不再
+   因层级折叠而被误认为“列表第一项”。 */
+.codex-stepper-container.show-chapter-order .codex-dash-item.active::after {
+  content: attr(data-chapter-order);
+  position: absolute;
+  left: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--codex-active-color, #3b82f6);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.codex-stepper-container.show-chapter-order.dock-right .codex-dash-item.active::after {
+  left: auto;
+  right: calc(100% + 2px);
+}
+
 .codex-dash-item.active:hover .codex-dash-bar {
   opacity: 1;
   background-color: var(--codex-active-color, #3b82f6) !important;
