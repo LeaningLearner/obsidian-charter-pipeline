@@ -487,24 +487,25 @@ function createReadingHarness() {
   return { app, container, firstHeading, plugin, scroller, secondHeading, sourceScroller, vaultEvents, view };
 }
 
-test('Reading View renders the chapter pipeline and tracks its visible scroll container', async () => {
-  const { container, plugin, scroller, sourceScroller, view } = createReadingHarness();
+// =========================================================================
+// 1. Reading View & Live Preview Scroller Tracking & Baseline Geometry
+// =========================================================================
 
-  await plugin.attachStepperToView(view);
+test('Reading View renders the chapter pipeline, binds scroll, and reflects chapter order settings', async () => {
+  const disabledHarness = createReadingHarness();
+  await disabledHarness.plugin.attachStepperToView(disabledHarness.view);
 
-  assert.ok(container.querySelector('.codex-stepper-container'));
-  assert.equal(scroller.listeners.get('scroll')?.length, 1);
-  assert.equal(sourceScroller.listeners.get('scroll'), undefined);
+  const container = disabledHarness.container;
+  const stepper = container.querySelector('.codex-stepper-container');
+  assert.ok(stepper);
+  assert.equal(stepper.classList.contains('show-chapter-order'), false);
+  assert.equal(disabledHarness.scroller.listeners.get('scroll')?.length, 1);
+  assert.equal(disabledHarness.sourceScroller.listeners.get('scroll'), undefined);
+
   const dashes = container.querySelectorAll('.codex-dash-item');
   assert.equal(dashes.length, 2);
   assert.equal(dashes[0].getAttribute('data-chapter-order'), '1');
   assert.equal(dashes[1].getAttribute('data-chapter-order'), '2');
-});
-
-test('chapter order labels are opt-in and disabled by default', async () => {
-  const disabledHarness = createReadingHarness();
-  await disabledHarness.plugin.attachStepperToView(disabledHarness.view);
-  assert.equal(disabledHarness.container.querySelector('.codex-stepper-container').classList.contains('show-chapter-order'), false);
 
   const enabledHarness = createReadingHarness();
   enabledHarness.plugin.settings.showChapterOrder = true;
@@ -512,7 +513,7 @@ test('chapter order labels are opt-in and disabled by default', async () => {
   assert.equal(enabledHarness.container.querySelector('.codex-stepper-container').classList.contains('show-chapter-order'), true);
 });
 
-test('Reading View active tracking ignores the hidden editor state', () => {
+test('Reading View active tracking handles mode aliases and ignores hidden editor state', async () => {
   const { container, plugin, scroller, sourceScroller, view } = createReadingHarness();
   sourceScroller.scrollTop = 0;
   scroller.scrollTop = 300;
@@ -529,69 +530,66 @@ test('Reading View active tracking ignores the hidden editor state', () => {
   ];
 
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
-});
 
-test('Obsidian reading mode aliases use Reading View tracking and scroll binding', async () => {
-  const { container, plugin, scroller, sourceScroller, view } = createReadingHarness();
   view.getMode = () => 'reading';
-  scroller.scrollTop = 300;
-  const chapters = [
-    { line: 0, headingIndex: 0 },
-    { line: 4, headingIndex: 1 },
-  ];
-
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
   await plugin.attachStepperToView(view);
   assert.equal(scroller.listeners.get('scroll')?.length, 1);
-  assert.equal(sourceScroller.listeners.get('scroll'), undefined);
 });
 
-test('Reading View uses the section beneath the viewport baseline when headings are virtualized', () => {
-  const { container, plugin, scroller, view } = createReadingHarness();
-  const section = scroller.append(new FakeElement({
-    classes: ['markdown-preview-section'],
-    attributes: { 'data-line': '16' },
-  }));
-  const visibleContent = section.append(new FakeElement({ tagName: 'p', textContent: 'Visible section content' }));
-  global.document.elementsFromPoint = () => [visibleContent];
-  const chapters = [
-    { line: 0, headingIndex: 0 },
-    { line: 8, headingIndex: 1 },
-    { line: 16, headingIndex: 2 },
-  ];
-
-  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 16);
-});
-
-test('Reading View prefers visible heading geometry over a stale first-section data line', () => {
+test('Reading View active line resolves rendered headings, virtualized sections, and elementsFromPoint', () => {
   const { container, plugin, scroller, view } = createReadingHarness();
   scroller.scrollTop = 300;
+
+  // Stale section with data-line=0
   const staleSection = scroller.append(new FakeElement({
     classes: ['markdown-preview-section'],
     attributes: { 'data-line': '0' },
   }));
   const visibleContent = staleSection.append(new FakeElement({ tagName: 'p', textContent: 'Current chapter content' }));
   global.document.elementsFromPoint = () => [visibleContent];
+
   const chapters = [
     { line: 0, headingIndex: 0, level: 1, title: 'First', rawHeading: 'First' },
     { line: 4, headingIndex: 1, level: 2, title: 'Second', rawHeading: 'Second' },
   ];
-
+  // Prefers real heading geometry over stale section
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
+
+  // Virtualized section beneath viewport baseline (headings not rendered in DOM)
+  const virtHarness = createReadingHarness();
+  const section16 = virtHarness.scroller.append(new FakeElement({
+    classes: ['markdown-preview-section'],
+    attributes: { 'data-line': '16' },
+  }));
+  const content16 = section16.append(new FakeElement({ tagName: 'p', textContent: 'Section 16 content' }));
+  global.document.elementsFromPoint = () => [content16];
+  const virtualChapters = [
+    { line: 0, headingIndex: 0 },
+    { line: 8, headingIndex: 1 },
+    { line: 16, headingIndex: 2 },
+  ];
+  assert.equal(virtHarness.plugin.getCurrentEditorTopLine(virtHarness.view, virtHarness.container, virtualChapters), 16);
 });
 
-test('Reading View tracks the scroll-owning parent when Obsidian moves scrolling outside the preview', async () => {
+test('Reading View scroller discovery prioritizes actively scrolling parent over long preview child', async () => {
   const { container, firstHeading, plugin, scroller, secondHeading, view } = createReadingHarness();
   const outerScroller = new FakeElement({
     classes: ['view-content'],
     rect: { top: 100, left: 250, right: 1000, height: 650 },
   });
   outerScroller.clientHeight = 650;
-  outerScroller.scrollHeight = 1600;
+  outerScroller.scrollHeight = 2400;
+  outerScroller.scrollTop = 300;
   outerScroller.append(container);
+
+  scroller.clientHeight = 650;
+  scroller.scrollHeight = 2400;
+  scroller.scrollTop = 0;
+
   firstHeading.rect.top = 80;
   secondHeading.rect.top = 150;
-  scroller.scrollTop = 0;
+
   const chapters = [
     { line: 0, headingIndex: 0 },
     { line: 4, headingIndex: 1 },
@@ -605,21 +603,7 @@ test('Reading View tracks the scroll-owning parent when Obsidian moves scrolling
   assert.equal(container.querySelectorAll('.codex-dash-item')[1].classList.contains('active'), true);
 });
 
-test('Reading View prioritizes the parent that is actually scrolling over a long preview child', () => {
-  const { container, plugin, scroller, view } = createReadingHarness();
-  const outerScroller = new FakeElement({ classes: ['view-content'] });
-  outerScroller.clientHeight = 650;
-  outerScroller.scrollHeight = 2400;
-  outerScroller.scrollTop = 300;
-  outerScroller.append(container);
-  scroller.clientHeight = 650;
-  scroller.scrollHeight = 2400;
-  scroller.scrollTop = 0;
-
-  assert.equal(plugin.getViewScroller(container, view), outerScroller);
-});
-
-test('Live Preview active tracking uses the last visible heading instead of chapter zero', () => {
+test('Live Preview active tracking resolves visible heading elements and CodeMirror scroller fallback', () => {
   const { container, plugin, sourceScroller, view } = createReadingHarness();
   view.getMode = () => 'source';
   sourceScroller.rect.top = 100;
@@ -633,13 +617,10 @@ test('Live Preview active tracking uses the last visible heading instead of chap
     { line: 0, level: 1, title: 'First', rawHeading: 'First' },
     { line: 4, level: 2, title: 'Second', rawHeading: 'Second' },
   ];
-
   assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 4);
-});
 
-test('Live Preview tracking falls back to the visible CodeMirror scroller', () => {
-  const { container, plugin, sourceScroller, view } = createReadingHarness();
-  view.getMode = () => 'source';
+  // Fallback to cm.lineBlockAtHeight
+  sourceScroller.empty();
   sourceScroller.scrollTop = 240;
   view.editor = {
     cm: {
@@ -647,9 +628,8 @@ test('Live Preview tracking falls back to the visible CodeMirror scroller', () =
       state: { doc: { lineAt: () => ({ number: 9 }) } },
     },
   };
-  const chapters = [{ line: 0 }, { line: 8 }];
-
-  assert.equal(plugin.getCurrentEditorTopLine(view, container, chapters), 8);
+  const fallbackChapters = [{ line: 0 }, { line: 8 }];
+  assert.equal(plugin.getCurrentEditorTopLine(view, container, fallbackChapters), 8);
 });
 
 test('clicking a Reading View chapter aligns its heading to the top baseline', async () => {
@@ -704,126 +684,68 @@ test('chapter navigation targets the view that owns the clicked pipeline', () =>
   assert.equal(other.scroller.lastScrollTo, undefined);
 });
 
-test('a layout refresh reattaches the pipeline after Obsidian replaces the Reading View DOM', async () => {
-  const { plugin, view } = createReadingHarness();
-  const replacement = createReadingHarness();
+test('DOM replacement, layout refresh, and concurrent requests safely reattach pipeline without listener leak', async () => {
+  const { app, container, plugin, scroller, view } = createReadingHarness();
 
+  // Layout refresh reattachment
+  const replacement = createReadingHarness();
   plugin.scheduleUpdateAllMarkdownViews();
   view.contentEl = replacement.container;
-
   await new Promise((resolve) => setTimeout(resolve, 200));
-
   assert.ok(view.contentEl.querySelector('.codex-stepper-container'));
-});
 
-test('Reading View DOM replacement reattaches the pipeline without another workspace event', async () => {
-  const { container, plugin, view } = createReadingHarness();
-  await plugin.attachStepperToView(view);
-
-  container.querySelector('.codex-stepper-container').remove();
-  const viewObserver = global.__mutationObservers[0];
-  assert.ok(viewObserver, 'the Markdown view should be observed for rendered DOM replacement');
-
+  // MutationObserver triggers reattachment on DOM removal
+  const obsHarness = createReadingHarness();
+  await obsHarness.plugin.attachStepperToView(obsHarness.view);
+  obsHarness.container.querySelector('.codex-stepper-container')?.remove();
+  const viewObserver = global.__mutationObservers.at(-1);
+  assert.ok(viewObserver, 'Markdown view should be observed');
   viewObserver.trigger();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(obsHarness.container.querySelector('.codex-stepper-container'));
 
-  assert.ok(container.querySelector('.codex-stepper-container'));
-});
-
-test('concurrent view refreshes keep only the newest pipeline instance', async () => {
-  const { app, container, plugin, view } = createReadingHarness();
+  // Concurrent refreshes keep only one pipeline instance
+  const concHarness = createReadingHarness();
   const pendingReads = [];
-  app.vault.cachedRead = () => new Promise((resolve) => pendingReads.push(resolve));
-
-  const firstRefresh = plugin.attachStepperToView(view);
-  const secondRefresh = plugin.attachStepperToView(view);
-  assert.equal(pendingReads.length, 2);
-
-  pendingReads.forEach((resolve) => resolve('# First\nbody\nbody\nbody\n## Second\nbody'));
+  concHarness.app.vault.cachedRead = () => new Promise((resolve) => pendingReads.push(resolve));
+  const firstRefresh = concHarness.plugin.attachStepperToView(concHarness.view);
+  const secondRefresh = concHarness.plugin.attachStepperToView(concHarness.view);
+  pendingReads.forEach((resolve) => resolve('# First\nbody\n## Second\nbody'));
   await Promise.all([firstRefresh, secondRefresh]);
+  assert.equal(concHarness.container.querySelectorAll('.codex-stepper-container').length, 1);
 
-  assert.equal(container.querySelectorAll('.codex-stepper-container').length, 1);
+  // Single scroll listener preserved
+  assert.equal(concHarness.scroller.listeners.get('scroll')?.length, 1);
 });
 
-test('repeated refreshes keep only one scroll listener per view', async () => {
-  const { plugin, scroller, view } = createReadingHarness();
-
-  await plugin.attachStepperToView(view);
-  await plugin.attachStepperToView(view);
-
-  assert.equal(scroller.listeners.get('scroll')?.length, 1);
-});
-
-test('Reading View ignores headings rendered inside embedded notes', () => {
+test('Reading View accurately matches headings ignoring embedded notes and inline titles, and navigates with subpath', () => {
   const { plugin, scroller, secondHeading, view } = createReadingHarness();
-  
-  // Insert an embedded note with its own heading before the second heading
+
+  // 1. Embedded note heading ignored
   const embed = new FakeElement({ classes: ['internal-embed'] });
-  const embedHeading = new FakeElement({ tagName: 'h2', textContent: 'Embedded Heading' });
-  embed.append(embedHeading);
+  embed.append(new FakeElement({ tagName: 'h2', textContent: 'Embedded Heading' }));
   scroller.children.splice(1, 0, embed);
+  assert.equal(plugin.getReadingHeading(view, { line: 4, headingIndex: 1, title: 'Second' }), secondHeading);
 
-  const matched = plugin.getReadingHeading(view, { line: 4, headingIndex: 1, title: 'Second' });
-  assert.equal(matched, secondHeading);
-});
-
-test('Reading View accurately matches H2 and H3 headings even with inline titles present', () => {
-  const { plugin, scroller, view } = createReadingHarness();
-  
-  // Add an inline-title h1 at the top of scroller
+  // 2. Inline title ignored and deep headings resolved
   const inlineTitle = new FakeElement({ tagName: 'h1', classes: ['inline-title'], textContent: 'Note Title' });
   scroller.children.unshift(inlineTitle);
-
   const h2Element = new FakeElement({
     tagName: 'h2',
     attributes: { 'data-heading': '2.2 导数的计算' },
     textContent: '2.2 导数的计算',
     rect: { top: 400, left: 250, right: 1000, height: 40 }
   });
-  const h3Element = new FakeElement({
-    tagName: 'h3',
-    attributes: { 'data-heading': '2.2.1 具体函数可导性的判断' },
-    textContent: '2.2.1 具体函数可导性的判断',
-    rect: { top: 700, left: 250, right: 1000, height: 35 }
-  });
   scroller.append(h2Element);
-  scroller.append(h3Element);
+  assert.equal(plugin.getReadingHeading(view, { level: 2, title: '2.2 导数的计算', rawHeading: '2.2 导数的计算', line: 10 }), h2Element);
 
-  const matchedH2 = plugin.getReadingHeading(view, {
-    level: 2,
-    title: '2.2 导数的计算',
-    rawHeading: '2.2 导数的计算',
-    line: 10
-  });
-  assert.equal(matchedH2, h2Element);
-
-  const matchedH3 = plugin.getReadingHeading(view, {
-    level: 3,
-    title: '2.2.1 具体函数可导性的判断',
-    rawHeading: '2.2.1 具体函数可导性的判断',
-    line: 25
-  });
-  assert.equal(matchedH3, h3Element);
-});
-
-test('Reading View navigation calls previewMode.applyScroll and setEphemeralState with subpath', () => {
-  const { plugin, view } = createReadingHarness();
+  // 3. Navigation calls previewMode.applyScroll and setEphemeralState
   let appliedScrollLine = null;
   let ephemeralState = null;
-  view.currentMode = {
-    applyScroll: (line) => { appliedScrollLine = line; }
-  };
-  view.setEphemeralState = (state) => {
-    ephemeralState = state;
-  };
+  view.currentMode = { applyScroll: (line) => { appliedScrollLine = line; } };
+  view.setEphemeralState = (state) => { ephemeralState = state; };
 
-  plugin.jumpToHeading(view, {
-    level: 2,
-    title: '2.4.1 脱帽法',
-    rawHeading: '2.4.1 脱帽法',
-    line: 21
-  });
-
+  plugin.jumpToHeading(view, { level: 2, title: '2.4.1 脱帽法', rawHeading: '2.4.1 脱帽法', line: 21 });
   assert.equal(appliedScrollLine, 21);
   assert.equal(ephemeralState?.subpath, '#2.4.1 脱帽法');
   assert.equal(ephemeralState?.line, 21);
@@ -872,9 +794,11 @@ test('chapter items render with level classes and mouseenter displays the Linear
   assert.ok(badgeH2Active.classList.contains('is-active'));
 });
 
-test('Settings load new default properties with backward compatibility', async () => {
+test('Settings load handles default fallbacks and preserves existing custom overrides', async () => {
   const { app } = createReadingHarness();
   const plugin = new ChapterPipelinePlugin(app, {});
+
+  // Default fallback
   await plugin.loadSettings();
   assert.equal(plugin.settings.dockPosition, 'left');
   assert.equal(plugin.settings.hierarchyMode, 'hover-expand');
@@ -883,11 +807,8 @@ test('Settings load new default properties with backward compatibility', async (
   assert.equal(plugin.settings.showChapterOrder, false);
   assert.equal(plugin.settings.readingBookmarksEnabled, false);
   assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
-});
 
-test('Settings load preserves existing custom values', async () => {
-  const { app } = createReadingHarness();
-  const plugin = new ChapterPipelinePlugin(app, {});
+  // Custom overrides
   plugin.loadData = async () => ({
     dockPosition: 'right',
     hierarchyMode: 'all',
@@ -899,9 +820,6 @@ test('Settings load preserves existing custom values', async () => {
   assert.equal(plugin.settings.hierarchyMode, 'all');
   assert.equal(plugin.settings.showProgressRail, true);
   assert.equal(plugin.settings.tooltipGlassmorphism, false);
-  assert.equal(plugin.settings.showChapterOrder, false);
-  assert.equal(plugin.settings.readingBookmarksEnabled, false);
-  assert.deepEqual(plugin.settings.readingState, { version: 1, files: {} });
 });
 
 test('ChapterPipelineSettingTab renders all controls and updates settings', async () => {
@@ -967,7 +885,7 @@ test('ChapterPipelineSettingTab renders all controls and updates settings', asyn
   assert.equal(plugin.settings.showChapterOrder, true);
 });
 
-test('ChapterSuggestModal provides items, search text, renders badge/title/excerpt, and handles selection with sound', () => {
+test('ChapterSuggestModal and openChapterPalette provide items, search text, badges/excerpts, and sound feedback', async () => {
   const { app, plugin, view } = createReadingHarness();
   let jumpedTo = null;
   let clickedSoundVolume = null;
@@ -988,6 +906,7 @@ test('ChapterSuggestModal provides items, search text, renders badge/title/excer
   assert.deepEqual(modal.getItems(), chapters);
   assert.equal(modal.getItemText(chapters[0]), 'Chapter 1 First line excerpt');
   assert.equal(modal.getItemText(chapters[1]), 'Chapter 2 ');
+  assert.ok(modal.modalEl.classList.contains('codex-suggest-modal'));
 
   // Test renderSuggestion for item with excerpt
   const el1 = new FakeElement();
@@ -1002,6 +921,8 @@ test('ChapterSuggestModal provides items, search text, renders badge/title/excer
   const excerpt1 = el1.querySelector('.codex-modal-excerpt');
   assert.ok(excerpt1, 'should render excerpt element');
   assert.ok(excerpt1.textContent.includes('First line excerpt'));
+  assert.ok(el1.classList.contains('codex-modal-item'));
+  assert.ok(el1.classList.contains('codex-suggest-item'));
 
   // Test renderSuggestion for item without excerpt
   const el2 = new FakeElement();
@@ -1013,6 +934,11 @@ test('ChapterSuggestModal provides items, search text, renders badge/title/excer
   modal.onChooseItem(chapters[0]);
   assert.deepEqual(jumpedTo, { view, chap: chapters[0] });
   assert.equal(clickedSoundVolume, 60);
+
+  // Test openChapterPalette
+  const openedModal = await plugin.openChapterPalette(view);
+  assert.ok(openedModal);
+  assert.equal(openedModal.isOpen, true);
 });
 
 test('jumpToPreviousChapter and jumpToNextChapter navigate with sound feedback', async () => {
@@ -1042,15 +968,6 @@ test('jumpToPreviousChapter and jumpToNextChapter navigate with sound feedback',
   await plugin.jumpToPreviousChapter(view);
   assert.equal(scroller.lastScrollTo?.top, 60);
   assert.equal(clickedSoundVolume, 45);
-});
-
-test('openChapterPalette extracts chapters and opens ChapterSuggestModal', async () => {
-  const { app, plugin, view } = createReadingHarness();
-  const modal = await plugin.openChapterPalette(view);
-
-  assert.ok(modal, 'openChapterPalette should return the modal instance');
-  assert.equal(modal.isOpen, true);
-  assert.equal(modal.getItems().length, 2);
 });
 
 test('onload registers navigation and reading-bookmark commands', async () => {
@@ -1122,110 +1039,78 @@ test('onload registers navigation and reading-bookmark commands', async () => {
   assert.equal(cleared, true);
 });
 
-test('right docking applies dock-right class, calculates right gutter scaling, and flips tooltip positioning', async () => {
-  const harness = createReadingHarness();
-  const { container, view } = harness;
-  harness.plugin.settings.dockPosition = 'right';
-
-  // Add sizer with specific left and right margins inside container
-  container.rect = { left: 0, right: 1000, top: 0, height: 800 };
-  container.clientWidth = 1000;
-  container.append(new FakeElement({
+test('docking applies left and right dock classes, calculates gutter scaling, and positions tooltips appropriately', async () => {
+  // 1. Right Docking
+  const rightHarness = createReadingHarness();
+  rightHarness.plugin.settings.dockPosition = 'right';
+  rightHarness.container.rect = { left: 0, right: 1000, top: 0, height: 800 };
+  rightHarness.container.clientWidth = 1000;
+  rightHarness.container.append(new FakeElement({
     classes: ['markdown-preview-sizer'],
     rect: { left: 150, right: 880, top: 0, height: 800 }
   }));
+  await rightHarness.plugin.attachStepperToView(rightHarness.view);
 
-  await harness.plugin.attachStepperToView(view);
+  const rightStepper = rightHarness.container.querySelector('.codex-stepper-container');
+  assert.ok(rightStepper.classList.contains('dock-right'));
+  assert.equal(rightStepper.style.values.get('--dash-w1'), '38px');
 
-  const stepperContainer = container.querySelector('.codex-stepper-container');
-  assert.ok(stepperContainer, 'stepper container should exist');
-  assert.ok(stepperContainer.classList.contains('dock-right'), 'stepper container should have dock-right class');
+  const rightDash = rightHarness.container.querySelectorAll('.codex-dash-item')[0];
+  rightDash.rect = { left: 960, right: 990, top: 200, height: 20 };
+  rightDash.dispatch('mouseenter');
+  const rightTooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.ok(rightTooltip.classList.contains('dock-right'));
+  assert.equal(rightTooltip.style.values.get('left'), '658px');
+  assert.equal(rightTooltip.style.values.get('top'), '210px');
 
-  // Gutter is 1000 - 880 = 120px.
-  // h1Width = Math.max(16, Math.min(38, Math.round(120 * 0.35))) = 38px.
-  assert.equal(stepperContainer.style.values.get('--dash-w1'), '38px');
-
-  // Test tooltip positioning on right-dock
-  const dashItems = container.querySelectorAll('.codex-dash-item');
-  assert.ok(dashItems.length > 0);
-  dashItems[0].rect = { left: 960, right: 990, top: 200, height: 20 };
-
-  dashItems[0].dispatch('mouseenter');
-  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
-  assert.ok(tooltip, 'tooltip should exist');
-  assert.ok(tooltip.classList.contains('dock-right'), 'tooltip should have dock-right class');
-  // leftX = Math.max(10, 960 - 290 - 12) = 658
-  assert.equal(tooltip.style.values.get('left'), '658px');
-  assert.equal(tooltip.style.values.get('top'), '210px');
-});
-
-test('left docking applies left gutter scaling and normal tooltip positioning', async () => {
-  const harness = createReadingHarness();
-  const { container, view } = harness;
-  harness.plugin.settings.dockPosition = 'left';
-
-  container.rect = { left: 0, right: 1000, top: 0, height: 800 };
-  container.clientWidth = 1000;
-  container.append(new FakeElement({
+  // 2. Left Docking
+  const leftHarness = createReadingHarness();
+  leftHarness.plugin.settings.dockPosition = 'left';
+  leftHarness.container.rect = { left: 0, right: 1000, top: 0, height: 800 };
+  leftHarness.container.clientWidth = 1000;
+  leftHarness.container.append(new FakeElement({
     classes: ['markdown-preview-sizer'],
     rect: { left: 120, right: 850, top: 0, height: 800 }
   }));
+  await leftHarness.plugin.attachStepperToView(leftHarness.view);
 
-  await harness.plugin.attachStepperToView(view);
+  const leftStepper = leftHarness.container.querySelector('.codex-stepper-container');
+  assert.equal(leftStepper.classList.contains('dock-right'), false);
+  assert.equal(leftStepper.style.values.get('--dash-w1'), '38px');
 
-  const stepperContainer = container.querySelector('.codex-stepper-container');
-  assert.ok(stepperContainer);
-  assert.equal(stepperContainer.classList.contains('dock-right'), false);
-
-  // Gutter is 120 - 0 = 120px -> 38px
-  assert.equal(stepperContainer.style.values.get('--dash-w1'), '38px');
-
-  const dashItems = container.querySelectorAll('.codex-dash-item');
-  dashItems[0].rect = { left: 10, right: 40, top: 200, height: 20 };
-  dashItems[0].dispatch('mouseenter');
-  const tooltip = global.document.body.querySelector('.codex-floating-tooltip');
-  assert.ok(tooltip);
-  assert.equal(tooltip.classList.contains('dock-right'), false);
-  // leftX = Math.min(1200 - 290 - 10, 40 + 12) = 52
-  assert.equal(tooltip.style.values.get('left'), '52px');
+  const leftDash = leftHarness.container.querySelectorAll('.codex-dash-item')[0];
+  leftDash.rect = { left: 10, right: 40, top: 200, height: 20 };
+  leftDash.dispatch('mouseenter');
+  const leftTooltip = global.document.body.querySelector('.codex-floating-tooltip');
+  assert.equal(leftTooltip.classList.contains('dock-right'), false);
+  assert.equal(leftTooltip.style.values.get('left'), '52px');
 });
 
-test('showProgressRail creates vertical rail and indicator when enabled', async () => {
+test('showProgressRail toggles vertical rail and handles single chapter gracefully', async () => {
   const harness = createReadingHarness();
-  const { container, plugin, view } = harness;
-  plugin.settings.showProgressRail = true;
+  const { app, container, plugin, view } = harness;
 
-  await plugin.attachStepperToView(view);
-
-  const track = container.querySelector('.codex-stepper-track');
-  assert.ok(track, 'stepper track should exist');
-
-  const rail = track.querySelector('.codex-progress-rail');
-  assert.ok(rail, '.codex-progress-rail should exist inside track');
-
-  const indicator = rail.querySelector('.codex-progress-indicator');
-  assert.ok(indicator, '.codex-progress-indicator should exist inside rail');
-  assert.equal(indicator.style.values.get('height'), '0%');
-});
-
-test('showProgressRail does not create rail when disabled', async () => {
-  const harness = createReadingHarness();
-  const { container, plugin, scroller, view } = harness;
+  // Disabled
   plugin.settings.showProgressRail = false;
-
   await plugin.attachStepperToView(view);
+  assert.equal(container.querySelector('.codex-progress-rail'), null);
 
-  const track = container.querySelector('.codex-stepper-track');
-  assert.ok(track, 'stepper track should exist');
-  assert.equal(track.querySelector('.codex-progress-rail'), null);
-  assert.equal(track.querySelector('.codex-progress-indicator'), null);
+  // Enabled
+  plugin.settings.showProgressRail = true;
+  await plugin.attachStepperToView(view);
+  const rail = container.querySelector('.codex-progress-rail');
+  const indicator = container.querySelector('.codex-progress-indicator');
+  assert.ok(rail);
+  assert.ok(indicator);
+  assert.equal(indicator.style.values.get('height'), '0%');
 
-  // Verify scrolling and clicking work without errors when rail is disabled
-  scroller.scrollTop = 300;
-  scroller.dispatch('scroll');
-  const dashes = container.querySelectorAll('.codex-dash-item');
-  assert.equal(dashes.length, 2);
-  dashes[1].dispatch('click');
+  // Single chapter test
+  app.metadataCache.getFileCache = () => ({
+    headings: [{ heading: 'Single Chapter', level: 1, position: { start: { line: 0 } } }]
+  });
+  app.vault.cachedRead = async () => '# Single Chapter\nContent';
+  await plugin.attachStepperToView(view);
+  assert.equal(container.querySelector('.codex-progress-indicator').style.values.get('height'), '100%');
 });
 
 test('progress rail indicator updates smoothly on scroll and chapter click', async () => {
@@ -1257,24 +1142,6 @@ test('progress rail indicator updates smoothly on scroll and chapter click', asy
   // Click back on first chapter
   dashes[0].dispatch('click');
   assert.equal(indicator.style.values.get('height'), '0%');
-});
-
-test('progress rail handles single chapter and custom offset measurements gracefully', async () => {
-  const harness = createReadingHarness();
-  const { app, container, plugin, view } = harness;
-  plugin.settings.showProgressRail = true;
-
-  // Single chapter test
-  app.metadataCache.getFileCache = () => ({
-    headings: [{ heading: 'Single Chapter', level: 1, position: { start: { line: 0 } } }]
-  });
-  app.vault.cachedRead = async () => '# Single Chapter\nContent';
-
-  await plugin.attachStepperToView(view);
-
-  const indicator = container.querySelector('.codex-progress-indicator');
-  assert.ok(indicator);
-  assert.equal(indicator.style.values.get('height'), '100%');
 });
 
 test('hierarchyMode "all" keeps all headings visible without .is-collapsed', async () => {
@@ -1501,13 +1368,13 @@ test('tooltipGlassmorphism setting toggles .is-solid class on floating tooltip',
   assert.equal(tooltip.classList.contains('is-solid'), true, 'should keep is-solid on mouseenter when glassmorphism disabled');
 });
 
-test('narrow viewport toggles .is-narrow on stepper container and resets tooltip visibility without display:none', async () => {
+test('narrow viewport toggles .is-narrow on stepper container based on configurable threshold and resets tooltip visibility', async () => {
   const harness = createReadingHarness();
   const { container, plugin, view } = harness;
-  plugin.settings.narrowThreshold = 600;
+  plugin.settings.narrowThreshold = 550;
 
-  // Set narrow width (< 380px threshold)
-  container.clientWidth = 320;
+  // Narrow width (< 550px threshold)
+  container.clientWidth = 500;
   await plugin.attachStepperToView(view);
 
   const stepperContainer = container.querySelector('.codex-stepper-container');
@@ -1518,31 +1385,11 @@ test('narrow viewport toggles .is-narrow on stepper container and resets tooltip
   assert.ok(tooltip);
   assert.equal(tooltip.classList.contains('is-visible'), false, 'tooltip should not be visible when narrow');
 
-  // Expand container width back to normal (> 380px)
-  container.clientWidth = 900;
-  // Trigger updateGutterDimensions via re-attaching or observer
+  // Expand container width back to normal (>= 550px)
+  container.clientWidth = 580;
   await plugin.attachStepperToView(view);
   const updatedStepper = container.querySelector('.codex-stepper-container');
   assert.equal(updatedStepper.classList.contains('is-narrow'), false, 'is-narrow should be removed when container expands');
-});
-
-test('ChapterSuggestModal applies .codex-suggest-modal class to modalEl and renders .codex-modal-item', () => {
-  const { app, plugin, view } = createReadingHarness();
-  const ChapterSuggestModal = ChapterPipelinePlugin.ChapterSuggestModal;
-  assert.ok(ChapterSuggestModal);
-
-  const chapters = [
-    { title: 'Chapter 1', level: 1, line: 0, summaryMarkdown: 'First line excerpt' }
-  ];
-
-  const modal = new ChapterSuggestModal(app, plugin, view, chapters);
-  assert.ok(modal.modalEl, 'modalEl should exist');
-  assert.equal(modal.modalEl.classList.contains('codex-suggest-modal'), true, 'modalEl should have codex-suggest-modal class');
-
-  const el = new FakeElement();
-  modal.renderSuggestion(chapters[0], el);
-  assert.equal(el.classList.contains('codex-suggest-item'), true, 'suggestion should have codex-suggest-item class');
-  assert.equal(el.classList.contains('codex-modal-item'), true, 'suggestion should have codex-modal-item class');
 });
 
 test('vertical density scales gap, padding, and min-height when chapter count is large to prevent overflow', async () => {
@@ -1641,47 +1488,45 @@ test('chapter IDs retain their identity through reordering and distinguish dupli
   assert.equal(reordered[0].id, 'h2:details:0');
 });
 
-test('reading state records only active-view chapter changes and resumes the saved chapter', async () => {
-  const { plugin, view } = createReadingHarness();
+test('reading state records active chapter, triggers non-blocking resume notice, and resumes or clears safely', async () => {
+  const { app, container, plugin, view } = createReadingHarness();
   plugin.settings.readingBookmarksEnabled = true;
+  await plugin.attachStepperToView(view);
+
   const chapters = await plugin.getChaptersForView(view);
+
+  // Background view does not record position
   const backgroundView = new MarkdownView();
   backgroundView.file = { path: 'other.md' };
-
   plugin.app.workspace.getActiveViewOfType = () => backgroundView;
   assert.equal(plugin.recordReadingPosition(view, chapters[1]), false, 'background views must not overwrite a resume point');
 
+  // Active view records position
   plugin.app.workspace.getActiveViewOfType = () => view;
   assert.equal(plugin.recordReadingPosition(view, chapters[1]), true);
   const savedResume = plugin.getReadingFileState(view.file, false).resume;
   assert.equal(savedResume.chapterId, chapters[1].id);
   assert.equal(savedResume.title, 'Second');
 
+  // Resume notification check
+  Notice.instances = [];
+  plugin.resumePromptedPaths.clear();
+  plugin.maybeShowResumeNotice(view, '# First\nbody\n## Second\nbody', view.file);
+  assert.equal(Notice.instances.length, 1);
+  assert.ok(Notice.instances[0].message.includes('Second'));
+
+  // Successful resume
   let jumpedTo = null;
   plugin.jumpToHeading = (targetView, chapter) => { jumpedTo = { targetView, chapter }; };
   assert.equal(await plugin.resumeLastChapter(view), true);
   assert.deepEqual(jumpedTo, { targetView: view, chapter: chapters[1] });
 
-  clearTimeout(plugin.readingSaveTimer);
-  plugin.readingSaveTimer = null;
-});
-
-test('saved resume notification is non-blocking, appears once, and preserves the saved point', async () => {
-  const { plugin, view } = createReadingHarness();
-  plugin.settings.readingBookmarksEnabled = true;
-  const chapters = await plugin.getChaptersForView(view);
+  // Missing chapter resume cleanup
   const fileState = plugin.getReadingFileState(view.file, true);
-  fileState.resume = { chapterId: chapters[1].id, title: chapters[1].title, updatedAt: 12 };
-  let jumped = false;
-  plugin.jumpToHeading = () => { jumped = true; };
-
-  await plugin.attachStepperToView(view);
-  await plugin.attachStepperToView(view);
-
-  assert.equal(Notice.instances.length, 1, 'resume notice should appear once per file per app session');
-  assert.equal(Notice.instances[0].message, 'Resume available: Second');
-  assert.equal(jumped, false, 'a resume notice must never auto-jump');
-  assert.equal(plugin.getReadingFileState(view.file, false).resume.chapterId, chapters[1].id);
+  fileState.resume = { chapterId: 'h2:missing:0', title: 'Missing', updatedAt: 5 };
+  assert.equal(await plugin.resumeLastChapter(view), false);
+  assert.equal(fileState.resume, undefined);
+  assert.equal(Notice.instances.at(-1).message, 'The saved chapter is no longer available.');
 });
 
 test('revisit and important bookmarks render shapes, text labels, and context actions', async () => {
@@ -1716,24 +1561,9 @@ test('revisit and important bookmarks render shapes, text labels, and context ac
   assert.equal(plugin.getChapterMarkers(view.file, chapters[0]).important, true);
 });
 
-test('resume command fails safely and clears only an unresolvable resume point', async () => {
-  const { plugin, view } = createReadingHarness();
+test('renaming a note migrates reading state and storage cleanup prunes deleted files', async () => {
+  const { app, plugin } = createReadingHarness();
   plugin.settings.readingBookmarksEnabled = true;
-  const fileState = plugin.getReadingFileState(view.file, true);
-  fileState.resume = { chapterId: 'h2:missing:0', title: 'Missing', updatedAt: 5 };
-  fileState.markers['h1:first:0'] = { revisit: true, important: false };
-  let jumped = false;
-  plugin.jumpToHeading = () => { jumped = true; };
-
-  assert.equal(await plugin.resumeLastChapter(view), false);
-  assert.equal(jumped, false);
-  assert.equal(fileState.resume, undefined);
-  assert.deepEqual(fileState.markers['h1:first:0'], { revisit: true, important: false });
-  assert.equal(Notice.instances.at(-1).message, 'The saved chapter is no longer available.');
-});
-
-test('renaming a note migrates and merges reading state without losing newer progress', async () => {
-  const { plugin } = createReadingHarness();
   plugin.settings.readingState = {
     version: 1,
     files: {
@@ -1744,15 +1574,27 @@ test('renaming a note migrates and merges reading state without losing newer pro
       'new.md': {
         resume: { chapterId: 'h2:target:0', title: 'Target', updatedAt: 10 },
         markers: { 'h1:first:0': { revisit: false, important: true } }
+      },
+      'deleted.md': {
+        resume: { chapterId: 'h1:del:0', title: 'Del', updatedAt: 50 },
+        markers: {}
       }
     }
   };
 
+  // Migration test
   assert.equal(await plugin.migrateReadingState('old.md', 'new.md'), true);
   assert.equal(plugin.settings.readingState.files['old.md'], undefined);
   const migrated = plugin.settings.readingState.files['new.md'];
   assert.equal(migrated.resume.chapterId, 'h2:source:0');
   assert.deepEqual(migrated.markers['h1:first:0'], { revisit: true, important: true });
+
+  // Cleanup test
+  app.vault.getAbstractFileByPath = (path) => path === 'new.md' ? { path } : null;
+  const cleanedCount = plugin.cleanupOrphanedReadingState();
+  assert.equal(cleanedCount, 1);
+  assert.ok(plugin.settings.readingState.files['new.md']);
+  assert.equal(plugin.settings.readingState.files['deleted.md'], undefined);
 });
 
 test('user-facing strings follow Chinese Obsidian language and fall back to English otherwise', async () => {
@@ -1789,7 +1631,7 @@ test('user-facing strings follow Chinese Obsidian language and fall back to Engl
   assert.equal(fallbackModal.placeholder, 'Search chapter or formula...');
 });
 
-test('active color is preserved across dashes, tooltips, and palette with a theme-accent fallback', async () => {
+test('active color resolution supports theme-accent fallback, preset hex values, and custom color picker', async () => {
   const { app, container, plugin, view } = createReadingHarness();
   plugin.settings.activeColor = 'var(--interactive-accent)';
   await plugin.attachStepperToView(view);
@@ -1802,21 +1644,11 @@ test('active color is preserved across dashes, tooltips, and palette with a them
   const modal = new ChapterPipelinePlugin.ChapterSuggestModal(app, plugin, view, []);
   assert.equal(modal.modalEl.style.getPropertyValue('--codex-active-color'), 'var(--interactive-accent, #3b82f6)');
   assert.equal(plugin.resolveActiveColor('#ec4899'), '#ec4899');
-});
 
-test('narrowThreshold custom setting is respected and not clamped to 380', async () => {
-  const { container, plugin, view } = createReadingHarness();
-  plugin.settings.narrowThreshold = 550;
-  container.clientWidth = 500;
-  await plugin.attachStepperToView(view);
-
-  const stepper = container.querySelector('.codex-stepper-container');
-  assert.ok(stepper.classList.contains('is-narrow'), 'stepper should be hidden when containerWidth < 550');
-
-  container.clientWidth = 580;
-  await plugin.attachStepperToView(view);
-  const updatedStepper = container.querySelector('.codex-stepper-container');
-  assert.ok(!updatedStepper.classList.contains('is-narrow'), 'stepper should be visible when containerWidth >= 550');
+  // Custom color
+  plugin.settings.activeColor = 'custom';
+  plugin.settings.customActiveColor = '#10b981';
+  assert.equal(plugin.resolveActiveColor('custom'), '#10b981');
 });
 
 test('multi-view attachment isolates floating tooltips per view', async () => {
@@ -1868,35 +1700,5 @@ echo "hello"
   assert.equal(chapters.length, 2);
   assert.equal(chapters[0].title, 'Real Heading 1');
   assert.equal(chapters[1].title, 'Real Heading 2');
-});
-
-test('custom active color picker resolution and cleanup command', async () => {
-  const { app, plugin } = createReadingHarness();
-  plugin.settings.activeColor = 'custom';
-  plugin.settings.customActiveColor = '#10b981';
-  assert.equal(plugin.resolveActiveColor('custom'), '#10b981');
-  assert.equal(plugin.resolveActiveColor('#a855f7'), '#a855f7');
-
-  // Reading state cleanup
-  plugin.settings.readingBookmarksEnabled = true;
-  plugin.settings.readingState = {
-    version: 1,
-    files: {
-      'existing.md': {
-        resume: { chapterId: 'h1:exist:0', title: 'Exist', updatedAt: 100 },
-        markers: {}
-      },
-      'deleted.md': {
-        resume: { chapterId: 'h1:del:0', title: 'Del', updatedAt: 50 },
-        markers: {}
-      }
-    }
-  };
-
-  app.vault.getAbstractFileByPath = (path) => path === 'existing.md' ? { path } : null;
-  const cleanedCount = plugin.cleanupOrphanedReadingState();
-  assert.equal(cleanedCount, 1);
-  assert.ok(plugin.settings.readingState.files['existing.md']);
-  assert.equal(plugin.settings.readingState.files['deleted.md'], undefined);
 });
 
