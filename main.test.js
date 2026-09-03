@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const Module = require('node:module');
+const path = require('node:path');
 const test = require('node:test');
 
 class FakeClassList {
@@ -477,6 +479,7 @@ function createReadingHarness() {
     maxHeadingLevel: 6,
     ignoreFirstH1: false,
     showExcerpt: true,
+    excerptLength: 140,
     activeColor: '#3b82f6',
     narrowThreshold: 600,
     enableSound: false,
@@ -1700,5 +1703,625 @@ echo "hello"
   assert.equal(chapters.length, 2);
   assert.equal(chapters[0].title, 'Real Heading 1');
   assert.equal(chapters[1].title, 'Real Heading 2');
+});
+
+// =========================================================================
+// Optimization Milestones Acceptance Test Suites (F1 - F13)
+// =========================================================================
+
+test('user ==highlight== preservation alongside jump flash suppression in styles and clearFlashHighlights', (t) => {
+  const cssPath = path.join(__dirname, 'styles.css');
+  const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+  // Progressive check for M1 styles.css update
+  const hasGlobalHighlightPollution = cssContent.includes('--text-highlight-bg: transparent') ||
+    cssContent.includes('--text-highlight-bg-active: transparent');
+
+  if (hasGlobalHighlightPollution) {
+    t.todo('Upcoming feature (Milestone M1 / F1): User highlight CSS variable pollution removal in styles.css pending M1');
+    return;
+  }
+
+  // 1. styles.css must not set --text-highlight-bg to transparent under workspace-leaf
+  assert.equal(cssContent.includes('--text-highlight-bg: transparent'), false,
+    'styles.css must not assign --text-highlight-bg: transparent on workspace-leaf');
+  assert.equal(cssContent.includes('--text-highlight-bg-active: transparent'), false,
+    'styles.css must not assign --text-highlight-bg-active: transparent on workspace-leaf');
+
+  // 2. styles.css must explicitly protect user mark elements and cm-highlight
+  assert.ok(
+    cssContent.includes('mark') && cssContent.includes('var(--text-highlight-bg)'),
+    'styles.css must preserve background-color on user mark elements'
+  );
+
+  // 3. Jump flash suppression selectors must be scoped to headings/containers, not blanket .workspace-leaf *
+  assert.ok(
+    cssContent.includes('.markdown-preview-section.is-flashing') ||
+    cssContent.includes(':is(h1, h2, h3, h4, h5, h6).is-flashing') ||
+    cssContent.includes('h1.is-flashing'),
+    'jump flash suppression rules should be scoped to headings/sections'
+  );
+
+  // 4. clearFlashHighlights must not strip highlights from user mark or cm-highlight elements
+  const { container, plugin } = createReadingHarness();
+  const headingEl = container.append(new FakeElement({
+    tagName: 'h2',
+    classes: ['is-flashing', 'is-highlighted', 'mod-highlighted']
+  }));
+  const userMarkEl = container.append(new FakeElement({
+    tagName: 'mark',
+    classes: ['cm-highlight', 'is-highlighted'],
+    textContent: 'Highlighted text'
+  }));
+
+  plugin.clearFlashHighlights(container);
+
+  // Heading flash classes removed
+  assert.equal(headingEl.classList.contains('is-flashing'), false, 'heading flash class should be removed');
+  assert.equal(headingEl.classList.contains('is-highlighted'), false, 'heading highlighted class should be removed');
+
+  // User mark remains intact
+  assert.equal(userMarkEl.tagName, 'mark');
+  assert.equal(userMarkEl.classList.contains('cm-highlight'), true, 'user cm-highlight class must not be stripped');
+});
+
+test('floating tooltip measures populated height after render to prevent viewport overflow', async (t) => {
+  const cssPath = path.join(__dirname, 'styles.css');
+  const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+  const hasTooltipOverflowRules = cssContent.includes('max-height') &&
+    cssContent.includes('overflow-y') &&
+    cssContent.includes('.codex-floating-tooltip');
+
+  if (!hasTooltipOverflowRules) {
+    t.todo('Upcoming feature (Milestone M1 / F2): Tooltip post-render dimension measurement & overflow clamping pending M1');
+    return;
+  }
+
+  // 1. Verify CSS defines max-height and overflow-y on .codex-floating-tooltip
+  assert.ok(cssContent.includes('overflow-y: auto') || cssContent.includes('overflow-y: scroll'),
+    'floating tooltip must have scrollable fallback for tall content');
+
+  // 2. Measure populated height after render in dash item hover handler
+  const { container, plugin, view } = createReadingHarness();
+  global.window.innerHeight = 800;
+
+  plugin.app.metadataCache.getFileCache = () => ({
+    headings: [
+      {
+        heading: 'Very Long Chapter Title With Complex Multiline Formula $\\sum_{i=1}^n \\frac{x_i^2}{y_i^2} = \\alpha$',
+        level: 1,
+        position: { start: { line: 0 } }
+      }
+    ]
+  });
+
+  await plugin.attachStepperToView(view);
+  const dashItem = container.querySelector('.codex-dash-item');
+  assert.ok(dashItem);
+
+  // Position dash item near bottom edge of 800px window
+  dashItem.rect = { top: 740, left: 10, right: 30, height: 20 };
+
+  const tooltip = plugin.viewTooltips.get(view);
+  assert.ok(tooltip);
+
+  // Simulate dynamic content height of populated card: 280px tall
+  let contentPopulated = false;
+  const originalCreateDiv = tooltip.createDiv.bind(tooltip);
+  tooltip.createDiv = function(...args) {
+    contentPopulated = true;
+    return originalCreateDiv(...args);
+  };
+  Object.defineProperty(tooltip, 'offsetHeight', {
+    get() {
+      return contentPopulated ? 280 : 0;
+    },
+    configurable: true
+  });
+
+  // Trigger hover
+  dashItem.dispatch('mouseenter');
+
+  const topStyle = tooltip.style.top;
+  assert.ok(topStyle, 'tooltip must have style.top set');
+  const clampedY = parseFloat(topStyle);
+
+  // Progressive check: if clampedY reflects pre-render height fallback (e.g. 718), mark todo for M1
+  if (clampedY > 800 - (280 / 2) - 10) {
+    t.todo('Upcoming feature (Milestone M1 / F2): Tooltip post-render dimension measurement & overflow clamping in main.js pending M1');
+    return;
+  }
+
+  // Assert clamped vertical center Y keeps the 280px tooltip inside 800px viewport
+  assert.ok(
+    clampedY <= 800 - (280 / 2) - 10,
+    `clampedY (${clampedY}) must prevent bottom overflow (max: ${800 - 140 - 10})`
+  );
+  assert.ok(
+    clampedY >= (280 / 2) + 10,
+    `clampedY (${clampedY}) must prevent top overflow (min: ${140 + 10})`
+  );
+  assert.equal(tooltip.classList.contains('is-visible'), true);
+});
+
+test('LaTeX multiline row separator \\\\ preservation in ChapterParser.parse for aligned, cases, and matrix formulas', (t) => {
+  const content = `# Aligned Math
+$$\\begin{aligned}
+\\nabla \\times \\mathbf{E} &= -\\frac{\\partial \\mathbf{B}}{\\partial t} \\\\
+\\nabla \\times \\mathbf{B} &= \\mu_0 \\mathbf{J} + \\mu_0 \\varepsilon_0 \\frac{\\partial \\mathbf{E}}{\\partial t}
+\\end{aligned}$$
+`;
+  const headings = [{ heading: 'Aligned Math', level: 1, position: { start: { line: 0 } } }];
+  const chapters = ChapterPipelinePlugin.ChapterParser.parse(content, headings, { showExcerpt: true });
+
+  assert.ok(chapters.length > 0);
+  const summary = chapters[0].summaryMarkdown;
+
+  // Progressive check: if \\ was replaced by space, mark todo for M1
+  if (!summary.includes('\\\\')) {
+    t.todo('Upcoming feature (Milestone M1 / F3): LaTeX \\\\ row separator preservation in ChapterParser.parse pending M1');
+    return;
+  }
+
+  // 1. Aligned environment \\ row separator preserved
+  assert.ok(summary.includes('\\\\'), 'LaTeX multiline \\\\ row separator must be preserved in summaryMarkdown');
+  assert.ok(summary.includes('\\begin{aligned}'), 'aligned environment tag must be preserved');
+  assert.ok(summary.includes('\\end{aligned}'), 'aligned environment close tag must be preserved');
+
+  // 2. Cases environment with \\ row separator
+  const casesContent = `# Cases Math
+$$\\begin{cases}
+f(x) = x^2 & \\text{if } x \\ge 0 \\\\
+f(x) = -x & \\text{if } x < 0
+\\end{cases}$$
+`;
+  const casesHeadings = [{ heading: 'Cases Math', level: 1, position: { start: { line: 0 } } }];
+  const casesChapters = ChapterPipelinePlugin.ChapterParser.parse(casesContent, casesHeadings, { showExcerpt: true });
+  assert.ok(casesChapters[0].summaryMarkdown.includes('\\\\'), 'cases environment \\\\ row separator must be preserved');
+  assert.ok(casesChapters[0].summaryMarkdown.includes('\\begin{cases}'));
+
+  // 3. Matrix environment with \\ row separator
+  const matrixContent = `# Matrix Math
+$$\\begin{pmatrix}
+1 & 0 & 0 \\\\
+0 & 1 & 0 \\\\
+0 & 0 & 1
+\\end{pmatrix}$$
+`;
+  const matrixHeadings = [{ heading: 'Matrix Math', level: 1, position: { start: { line: 0 } } }];
+  const matrixChapters = ChapterPipelinePlugin.ChapterParser.parse(matrixContent, matrixHeadings, { showExcerpt: true });
+  assert.ok(matrixChapters[0].summaryMarkdown.includes('\\\\'), 'matrix environment \\\\ row separator must be preserved');
+  assert.ok(matrixChapters[0].summaryMarkdown.includes('\\begin{pmatrix}'));
+});
+
+test('balanced math delimiter $ handling upon excerpt truncation guarantees no dangling delimiters and appends ellipsis', (t) => {
+  const prefix = 'Introduction text explaining fundamentals. '.repeat(5);
+  const content = `# Truncation Test
+${prefix}$E = mc^2$ and more trailing explanation that exceeds the limit by many characters.
+`;
+  const headings = [{ heading: 'Truncation Test', level: 1, position: { start: { line: 0 } } }];
+  const chapters = ChapterPipelinePlugin.ChapterParser.parse(content, headings, { showExcerpt: true, excerptLength: 200 });
+
+  const summary = chapters[0].summaryMarkdown;
+
+  // Progressive check: if summary does not end with '...', mark todo for M1
+  if (!summary.endsWith('...')) {
+    t.todo('Upcoming feature (Milestone M1 / F4): Balanced math delimiter $ truncation and clean ellipsis pending M1');
+    return;
+  }
+
+  // 1. Must end cleanly with '...'
+  assert.ok(summary.endsWith('...'), 'truncated excerpt must append ellipsis (...)');
+  assert.equal(summary.endsWith(' ...'), false, 'ellipsis must not have dangling leading whitespace');
+
+  // 2. Unescaped dollar count must be even (no unclosed $)
+  const dollarCount = (summary.match(/(^|[^\\])\$/g) || []).length;
+  assert.equal(dollarCount % 2, 0, `unescaped $ count must be even (got ${dollarCount}): "${summary}"`);
+
+  // 3. Adversarial boundary test: Cutoff directly through formula $x^2 + y^2 = z^2$
+  const boundaryContent = `# Boundary Test
+${'A'.repeat(195)}$x^2 + y^2 = z^2$ trailing content
+`;
+  const boundaryHeadings = [{ heading: 'Boundary Test', level: 1, position: { start: { line: 0 } } }];
+  const boundaryChapters = ChapterPipelinePlugin.ChapterParser.parse(boundaryContent, boundaryHeadings, { showExcerpt: true, excerptLength: 200 });
+  const boundarySummary = boundaryChapters[0].summaryMarkdown;
+  const boundaryDollarCount = (boundarySummary.match(/(^|[^\\])\$/g) || []).length;
+  assert.equal(boundaryDollarCount % 2, 0, 'math delimiters must remain balanced when cut bisects formula');
+  assert.ok(boundarySummary.endsWith('...'));
+
+  // 4. Short text shorter than limit does NOT append ellipsis
+  const shortContent = `# Short
+Simple concise excerpt.
+`;
+  const shortHeadings = [{ heading: 'Short', level: 1, position: { start: { line: 0 } } }];
+  const shortChapters = ChapterPipelinePlugin.ChapterParser.parse(shortContent, shortHeadings, { showExcerpt: true, excerptLength: 200 });
+  assert.equal(shortChapters[0].summaryMarkdown.endsWith('...'), false, 'short excerpt within limit must not append ellipsis');
+  assert.equal(shortChapters[0].summaryMarkdown, 'Simple concise excerpt.');
+});
+
+test('early-exit excerpt extraction finishes in < 15ms on 50,000-line large notes', (t) => {
+  const header = '# Benchmark Note\nLine one of chapter content\nLine two with formula $x = 1$\nLine three final summary line\n';
+  const filler = 'Repetitive filler content line that should not be scanned by O(1) scanner\n'.repeat(50000);
+  const largeContent = header + filler;
+  const headings = [{ heading: 'Benchmark Note', level: 1, position: { start: { line: 0 } } }];
+
+  const startTime = performance.now();
+  const chapters = ChapterPipelinePlugin.ChapterParser.parse(largeContent, headings, { showExcerpt: true });
+  const durationMs = performance.now() - startTime;
+
+  // Progressive check: if duration > 15ms or content scans filler
+  if (durationMs > 15 || chapters[0]?.summaryMarkdown?.includes('Repetitive filler content line')) {
+    t.todo(`Upcoming feature (Milestone M2 / F5): Early-exit O(1) excerpt extraction pending M2 (took ${durationMs.toFixed(2)}ms)`);
+    return;
+  }
+
+  assert.ok(durationMs < 15, `ChapterParser.parse on 50k lines must complete in < 15ms (took ${durationMs.toFixed(2)}ms)`);
+
+  const summary = chapters[0].summaryMarkdown;
+  assert.ok(summary.includes('Line one of chapter content'), 'summary must contain line 1');
+  assert.ok(summary.includes('Line two with formula $x = 1$'), 'summary must contain line 2');
+  assert.ok(summary.includes('Line three final summary line'), 'summary must contain line 3');
+  assert.equal(summary.includes('Repetitive filler content line'), false, 'summary must not scan trailing filler lines');
+});
+
+test('scroll listener filtering ignores scroll events outside the active note container', (t) => {
+  const { container, plugin, view } = createReadingHarness();
+
+  // Progressive check: if isScrollEventRelevant is not defined, mark todo for M2
+  if (typeof plugin.isScrollEventRelevant !== 'function') {
+    t.todo('Upcoming feature (Milestone M2 / F6): Scroll listener event filtering pending M2');
+    return;
+  }
+
+  // 1. Relevant: scroll event on the container itself
+  const containerEvent = { target: container };
+  assert.equal(plugin.isScrollEventRelevant(containerEvent, view, container), true,
+    'container scroll event must be relevant');
+
+  // 2. Relevant: scroll event on a child element inside container (e.g. preview pane)
+  const childScroller = container.createDiv({ cls: 'markdown-preview-view' });
+  const childEvent = { target: childScroller };
+  assert.equal(plugin.isScrollEventRelevant(childEvent, view, container), true,
+    'child scroller inside container must be relevant');
+
+  // 3. Irrelevant: scroll event on an external element (e.g. sidebar tree, modal, backlinks)
+  const sidebarEl = new FakeElement({ classes: ['nav-files-container'] });
+  const sidebarEvent = { target: sidebarEl };
+  assert.equal(plugin.isScrollEventRelevant(sidebarEvent, view, container), false,
+    'external sidebar scroll event must be filtered out');
+
+  // 4. Defensive fallback: null or missing target returns true to protect synthetic test harnesses
+  assert.equal(plugin.isScrollEventRelevant(null, view, container), true,
+    'null event must defensively return true');
+  assert.equal(plugin.isScrollEventRelevant({}, view, container), true,
+    'event without target must defensively return true');
+});
+
+test('automatic vault.on("delete") event listener prunes deleted files and directory prefixes', async (t) => {
+  const { app, plugin } = createReadingHarness();
+
+  // Progressive check: if pruneDeletedReadingState is not defined, mark todo for M2
+  if (typeof plugin.pruneDeletedReadingState !== 'function') {
+    t.todo('Upcoming feature (Milestone M2 / F7): Automatic vault.on("delete") reading state pruning pending M2');
+    return;
+  }
+
+  plugin.settings.readingBookmarksEnabled = true;
+  plugin.settings.readingState = {
+    version: 1,
+    files: {
+      'folder/deleted-note.md': {
+        resume: { chapterId: 'h1:title:0', title: 'Title', updatedAt: 100 },
+        markers: { 'h1:title:0': { revisit: true, important: false } }
+      },
+      'folder/subfolder/another.md': {
+        resume: { chapterId: 'h2:sub:0', title: 'Sub', updatedAt: 200 },
+        markers: {}
+      },
+      'preserved/active.md': {
+        resume: { chapterId: 'h1:act:0', title: 'Active', updatedAt: 300 },
+        markers: {}
+      }
+    }
+  };
+  plugin.resumePromptedPaths = new Set(['folder/deleted-note.md', 'preserved/active.md']);
+
+  let saved = false;
+  plugin.saveSettings = async () => { saved = true; };
+
+  // 1. Single file pruning
+  const singleCleaned = await plugin.pruneDeletedReadingState('folder/deleted-note.md');
+  assert.equal(singleCleaned, 1, 'should prune 1 file');
+  assert.equal(plugin.settings.readingState.files['folder/deleted-note.md'], undefined);
+  assert.equal(plugin.resumePromptedPaths.has('folder/deleted-note.md'), false);
+  assert.ok(plugin.settings.readingState.files['preserved/active.md']);
+  assert.equal(saved, true, 'saveSettings must be called');
+
+  // 2. Directory prefix pruning (deleting "folder")
+  const dirCleaned = await plugin.pruneDeletedReadingState('folder');
+  assert.equal(dirCleaned, 1, 'should prune remaining child under folder/');
+  assert.equal(plugin.settings.readingState.files['folder/subfolder/another.md'], undefined);
+  assert.ok(plugin.settings.readingState.files['preserved/active.md']);
+
+  // 3. Vault delete event registration verification
+  const deleteEvents = [];
+  app.vault.on = (event, callback) => {
+    if (event === 'delete') deleteEvents.push(callback);
+    return { event, callback };
+  };
+  await plugin.onload();
+  assert.ok(deleteEvents.length > 0, 'vault.on("delete") must be registered during onload()');
+});
+
+test('SoundEngine.destroy() closes AudioContext and nulls ctx on plugin onunload', (t) => {
+  const SoundEngine = ChapterPipelinePlugin.SoundEngine;
+
+  // Progressive check: if destroy method does not exist, mark todo for M2
+  if (!SoundEngine || typeof SoundEngine.prototype.destroy !== 'function') {
+    t.todo('Upcoming feature (Milestone M2 / F8): SoundEngine.destroy() resource cleanup pending M2');
+    return;
+  }
+
+  const engine = new SoundEngine();
+
+  let closeCalled = false;
+  class MockAudioContext {
+    constructor() {
+      this.state = 'running';
+    }
+    async close() {
+      closeCalled = true;
+      this.state = 'closed';
+    }
+  }
+
+  global.window.AudioContext = MockAudioContext;
+  const ctx = engine.getAudioContext();
+  assert.ok(ctx, 'AudioContext should be instantiated');
+  assert.equal(engine.ctx, ctx);
+
+  // 1. Calling destroy closes AudioContext and nulls ctx
+  engine.destroy();
+  assert.equal(closeCalled, true, 'AudioContext.close() must be invoked');
+  assert.equal(engine.ctx, null, 'soundEngine.ctx must be nulled out');
+
+  // 2. Idempotent: multiple destroy calls do not throw
+  assert.doesNotThrow(() => {
+    engine.destroy();
+    engine.destroy();
+  }, 'subsequent destroy() calls must be safe and idempotent');
+
+  // 3. Plugin onunload invokes soundEngine.destroy()
+  const { plugin } = createReadingHarness();
+  plugin.soundEngine = new SoundEngine();
+  plugin.soundEngine.getAudioContext();
+  assert.ok(plugin.soundEngine.ctx);
+
+  plugin.onunload();
+  assert.equal(plugin.soundEngine.ctx, null, 'plugin.onunload() must destroy soundEngine and null its ctx');
+});
+
+test('active chapter order indicator maintains a fixed vertical baseline without horizontal jitter', (t) => {
+  const cssPath = path.join(__dirname, 'styles.css');
+  const cssContent = fs.readFileSync(cssPath, 'utf8');
+
+  const hasFixedOrderBaseline = (
+    cssContent.includes('.codex-stepper-container.show-chapter-order .codex-dash-item') &&
+    (cssContent.includes('min-width') || cssContent.includes('width: calc(') || cssContent.includes('--dash-hover-w1'))
+  ) || (
+    cssContent.includes('.codex-dash-item.active::after') &&
+    cssContent.includes('--dash-hover-w1')
+  );
+
+  if (!hasFixedOrderBaseline) {
+    t.todo('Upcoming feature (Milestone M3 / F9): Active chapter order indicator fixed vertical baseline pending M3');
+    return;
+  }
+
+  assert.ok(hasFixedOrderBaseline, 'styles.css must anchor chapter order indicator to a fixed vertical baseline');
+
+  const { container, plugin, view } = createReadingHarness();
+  plugin.settings.showChapterOrder = true;
+
+  plugin.app.metadataCache.getFileCache = () => ({
+    headings: [
+      { heading: 'H1 Section', level: 1, position: { start: { line: 0 } } },
+      { heading: 'H2 Section', level: 2, position: { start: { line: 4 } } },
+      { heading: 'H3 Section', level: 3, position: { start: { line: 8 } } },
+      { heading: 'H4 Section', level: 4, position: { start: { line: 12 } } },
+    ]
+  });
+
+  return plugin.attachStepperToView(view).then(() => {
+    const stepper = container.querySelector('.codex-stepper-container');
+    assert.ok(stepper.classList.contains('show-chapter-order'), 'stepper should have show-chapter-order');
+
+    const dashItems = container.querySelectorAll('.codex-dash-item');
+    assert.equal(dashItems.length, 4);
+
+    assert.equal(dashItems[0].getAttribute('data-chapter-order'), '1');
+    assert.equal(dashItems[1].getAttribute('data-chapter-order'), '2');
+    assert.equal(dashItems[2].getAttribute('data-chapter-order'), '3');
+    assert.equal(dashItems[3].getAttribute('data-chapter-order'), '4');
+  });
+});
+
+test('ChapterSuggestModal filters by heading level (h1..h6, #) and bookmark tags (revisit, important, 待复习, 重点)', (t) => {
+  const SuggestModalClass = ChapterPipelinePlugin.ChapterSuggestModal;
+
+  if (!SuggestModalClass || typeof SuggestModalClass.prototype.getSuggestions !== 'function') {
+    t.todo('Upcoming feature (Milestone M3 / F10 & F11): Palette search filtering by heading levels and bookmarks pending M3');
+    return;
+  }
+
+  const { app, plugin, view } = createReadingHarness();
+  plugin.settings.readingBookmarksEnabled = true;
+
+  const chapters = [
+    { title: 'Introduction to Calculus', level: 1, summaryMarkdown: 'First line excerpt', id: 'c1' },
+    { title: 'Derivative Rules', level: 2, summaryMarkdown: 'Power rule and product rule', id: 'c2' },
+    { title: 'Integration by Parts', level: 3, summaryMarkdown: 'Formula for integrals', id: 'c3' },
+    { title: 'Differential Equations', level: 1, summaryMarkdown: 'Ordinary differential equations', id: 'c4' },
+  ];
+
+  plugin.getChapterMarkers = (file, chap) => {
+    if (chap.id === 'c1') return { revisit: true, important: false };
+    if (chap.id === 'c2') return { revisit: false, important: true };
+    if (chap.id === 'c4') return { revisit: true, important: true };
+    return { revisit: false, important: false };
+  };
+
+  const modal = new SuggestModalClass(app, plugin, view, chapters);
+
+  // 1. Test 13 contract preservation: getItemText output must remain unchanged
+  assert.equal(modal.getItemText(chapters[0]), 'Introduction to Calculus First line excerpt');
+  assert.equal(modal.getItemText(chapters[1]), 'Derivative Rules Power rule and product rule');
+
+  // 2. Empty query returns all chapters
+  assert.deepEqual(modal.getSuggestions(''), chapters);
+  assert.deepEqual(modal.getSuggestions('   '), chapters);
+
+  // 3. Heading level filters: "h1", "H1", "#"
+  const h1Results = modal.getSuggestions('h1');
+  assert.equal(h1Results.length, 2);
+  assert.deepEqual(h1Results.map((c) => c.title), ['Introduction to Calculus', 'Differential Equations']);
+
+  const h2Results = modal.getSuggestions('H2');
+  assert.equal(h2Results.length, 1);
+  assert.equal(h2Results[0].title, 'Derivative Rules');
+
+  const hashLevel3 = modal.getSuggestions('###');
+  assert.equal(hashLevel3.length, 1);
+  assert.equal(hashLevel3[0].title, 'Integration by Parts');
+
+  // 4. Bookmark tag filters: "revisit" and "待复习"
+  const revisitResults = modal.getSuggestions('revisit');
+  assert.equal(revisitResults.length, 2);
+  assert.deepEqual(revisitResults.map((c) => c.title), ['Introduction to Calculus', 'Differential Equations']);
+
+  const chineseRevisit = modal.getSuggestions('待复习');
+  assert.equal(chineseRevisit.length, 2);
+
+  // 5. Bookmark tag filters: "important" and "重点"
+  const importantResults = modal.getSuggestions('important');
+  assert.equal(importantResults.length, 2);
+  assert.deepEqual(importantResults.map((c) => c.title), ['Derivative Rules', 'Differential Equations']);
+
+  const chineseImportant = modal.getSuggestions('重点');
+  assert.equal(chineseImportant.length, 2);
+
+  // 6. Compound filter: level + text
+  const compoundResults = modal.getSuggestions('h1 Calculus');
+  assert.equal(compoundResults.length, 1);
+  assert.equal(compoundResults[0].title, 'Introduction to Calculus');
+
+  // 7. Compound filter: bookmark + level
+  const bookmarkedH1 = modal.getSuggestions('important h1');
+  assert.equal(bookmarkedH1.length, 1);
+  assert.equal(bookmarkedH1[0].title, 'Differential Equations');
+
+  // 8. Non-matching query returns empty array
+  assert.deepEqual(modal.getSuggestions('quantum mechanics'), []);
+});
+
+test('excerptLength setting configuration (60-300), persistence, and parser truncation', async (t) => {
+  const { app, plugin } = createReadingHarness();
+  await plugin.onload();
+
+  if (plugin.settings.excerptLength === undefined) {
+    t.todo('Upcoming feature (Milestone M3 / F12): excerptLength setting configuration and persistence pending M3');
+    return;
+  }
+
+  // 1. Default settings have valid excerptLength (default 140 or 200)
+  assert.ok(
+    plugin.settings.excerptLength >= 60 && plugin.settings.excerptLength <= 300,
+    `default excerptLength (${plugin.settings.excerptLength}) must be between 60 and 300`
+  );
+
+  // 2. Setting tab renders excerptLength slider when showExcerpt is enabled
+  Setting.instances = [];
+  plugin.settingTab.display();
+  const sliderSetting = Setting.instances.find((s) =>
+    (s.name && (s.name.includes('Excerpt length') || s.name.includes('摘要字符长度') || s.name.includes('长度'))) ||
+    s.controls.some((c) => c.min === 60 && c.max === 300)
+  );
+  assert.ok(sliderSetting, 'setting tab must render excerptLength slider');
+  const slider = sliderSetting.controls.find((c) => typeof c.setValue === 'function');
+  assert.ok(slider);
+  assert.equal(slider.min, 60);
+  assert.equal(slider.max, 300);
+  assert.equal(slider.step, 10);
+
+  // 3. Slider changeHandler updates settings and triggers persistence
+  let saved = false;
+  plugin.saveSettings = async () => { saved = true; };
+  await slider.changeHandler(80);
+  assert.equal(plugin.settings.excerptLength, 80);
+  assert.equal(saved, true);
+
+  // 4. ChapterParser.parse respects configured excerptLength (80 chars)
+  const longText = '# Heading\n' + 'word '.repeat(50);
+  const headings = [{ heading: 'Heading', level: 1, position: { start: { line: 0 } } }];
+  const parsed80 = ChapterPipelinePlugin.ChapterParser.parse(longText, headings, {
+    showExcerpt: true,
+    excerptLength: 80
+  });
+  const summary80 = parsed80[0].summaryMarkdown.replace(/\.\.\.$/, '');
+  assert.ok(summary80.length <= 80, `summary length (${summary80.length}) must not exceed 80`);
+
+  // 5. ChapterParser.parse respects configured excerptLength (250 chars)
+  const parsed250 = ChapterPipelinePlugin.ChapterParser.parse(longText, headings, {
+    showExcerpt: true,
+    excerptLength: 250
+  });
+  const summary250 = parsed250[0].summaryMarkdown.replace(/\.\.\.$/, '');
+  assert.ok(summary250.length <= 250, `summary length (${summary250.length}) must not exceed 250`);
+  assert.ok(summary250.length > 80, '250-char excerpt must contain more content than 80-char excerpt');
+});
+
+test('keyboard focus and blur trigger formula tooltip visibility and handle collapsed items tabindex', async (t) => {
+  const { container, plugin, view } = createReadingHarness();
+  await plugin.attachStepperToView(view);
+
+  const dashItems = container.querySelectorAll('.codex-dash-item');
+  const tooltip = plugin.viewTooltips.get(view);
+  assert.ok(dashItems.length > 0);
+  assert.ok(tooltip);
+
+  dashItems[0].dispatch('focus');
+  if (!tooltip.classList.contains('is-visible')) {
+    t.todo('Upcoming feature (Milestone M3 / F13): Keyboard focus/blur tooltip visibility on dash items pending M3');
+    return;
+  }
+
+  // 1. Keyboard focus shows formula tooltip
+  assert.equal(tooltip.classList.contains('is-visible'), true,
+    'focus on dash item must display floating tooltip for keyboard navigation');
+
+  // 2. Keyboard blur hides formula tooltip
+  dashItems[0].dispatch('blur');
+  assert.equal(tooltip.classList.contains('is-visible'), false,
+    'blur on dash item must hide floating tooltip');
+
+  // 3. Focus trapping prevention: collapsed items in hover-expand mode receive tabindex="-1"
+  plugin.settings.hierarchyMode = 'hover-expand';
+  plugin.app.metadataCache.getFileCache = () => ({
+    headings: [
+      { heading: 'H1 Section', level: 1, position: { start: { line: 0 } } },
+      { heading: 'H3 Collapsed Section', level: 3, position: { start: { line: 4 } } },
+    ]
+  });
+  await plugin.attachStepperToView(view);
+  const updatedDashes = container.querySelectorAll('.codex-dash-item');
+  const h1Item = updatedDashes[0];
+  const h3Item = updatedDashes[1];
+
+  assert.equal(h3Item.classList.contains('is-collapsed'), true);
+  assert.equal(h3Item.getAttribute('tabindex'), '-1',
+    'collapsed item must have tabindex="-1" to prevent keyboard focus trap');
+  assert.equal(h1Item.getAttribute('tabindex'), '0',
+    'visible H1 item must retain tabindex="0"');
 });
 

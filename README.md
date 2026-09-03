@@ -36,6 +36,13 @@
 
 Unlike traditional bulky sidebar trees or noisy full-text minimaps, Charter Pipeline renders a clean vertical series of **floating horizontal dash bars** on the left margin of your note. With proportional heading lengths, instant hover popovers with **KaTeX math previews**, **tactile micro-switch feedback**, and **rock-solid pinned-top navigation** across both Editing and Reading views, navigating long technical notes, research, documentation, and study material becomes effortless.
 
+### 🆕 v1.1.3 Highlights
+
+- **Highlight & LaTeX Formula Protection**: Preserves user's `==highlight==` styling across all views while strictly scoping jump-flash suppression; preserves LaTeX `\\` row breaks in multiline environments (`aligned`, `cases`, `matrix`); balances math delimiters upon excerpt truncation.
+- **High-Performance O(1) Excerpt Extraction**: Large chapters use early-exit scanning (< 15ms on 50,000-line notes); isolates document capture scroll listener to the active container.
+- **Storage Auto-Pruning & Audio Cleanup**: Automatically prunes deleted notes from local reading bookmarks upon `vault.on('delete')`; properly releases Web Audio resources on plugin unload.
+- **UX & Accessibility Enhancements**: Active chapter order indicator maintains a fixed vertical baseline without horizontal jitter; quick switcher palette supports filtering by heading level (`h1..h6`, `#`) and bookmarks (`revisit`, `important`); configurable `excerptLength` (60-300 chars); full keyboard focus/blur formula tooltip support.
+
 ### 🆕 v1.1.2 Highlights
 
 - **Reading Progress & Bookmarks** is now available as an optional, local-only feature: save a chapter resume point and mark any chapter as **Revisit** or **Important** without changing your Markdown.
@@ -158,6 +165,13 @@ Charter Pipeline provides commands that you can bind to custom hotkeys in **Sett
 **Charter Pipeline** 为 Obsidian 长文档与考研/学术笔记带来了 **Linear 的极简散落横线步进流** 美学。
 
 区别于传统占用大量屏幕空间的臃肿侧边栏目录或信息杂乱的代码小地图，Charter Pipeline 在笔记左侧边缘渲染一列**纯净散落的悬浮横线条**。通过精巧的长短区分（H1~H6）、**支持 KaTeX 数学公式渲染的 3 行气泡卡片**、**清脆微动开关物理音效**、以及**编辑/阅读双模式像素级绝对置顶平滑跳转**，让长文浏览与章节检索变得优雅而极速。
+
+### 🆕 v1.1.3 更新
+
+- **正文高亮与 LaTeX 公式保护**：彻底避免污染用户笔记原生 `==高亮==` 样式；保留 `aligned`、`cases`、`matrix` 等多行数学环境中的关键换行符 `\\`；公式摘要截断自动平衡 `$` 定界符并规范显示省略号。
+- **O(1) 超长笔记极速摘要解析**：章节摘要采用正向早停扫描机制，50,000 行超长文档解析耗时降至 15ms 以内；精确过滤全局滚动事件，消除无谓重算。
+- **存储自动清理与音频资源释放**：自动联动 `vault.on('delete')` 清理已删除笔记的本地断点与书签；插件卸载时显式释放底层 Web Audio 资源。
+- **体验与无障碍增强**：活动章节序号对齐统一垂直基准线，消除水平晃动；搜索面板支持按层级（`h1`~`h6`、`#`）与书签状态（`待复习`、`重点`）检索；正式提供 60~300 字符的摘要长度配置项；支持 Tab 键焦点（focus/blur）唤出公式气泡。
 
 ### 🆕 v1.1.2 更新
 

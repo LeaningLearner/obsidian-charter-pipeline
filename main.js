@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   maxHeadingLevel: 2,
   ignoreFirstH1: false,
   showExcerpt: true,
+  excerptLength: 140,
   activeColor: '#3b82f6',
   customActiveColor: '#3b82f6',
   narrowThreshold: 600,
@@ -29,6 +30,8 @@ const I18N = {
     tabTitle: 'Charter Pipeline Settings',
     showExcerptName: 'Show 3-Line Excerpt Preview',
     showExcerptDesc: 'Display a 3-line excerpt of the section with KaTeX formula rendering below the title in the hover popover card. When disabled, only the clean title is shown.',
+    excerptLengthName: 'Excerpt length (characters)',
+    excerptLengthDesc: 'Maximum length of excerpt text extracted for tooltip and palette previews (60 - 300).',
     ignoreH1Name: 'Ignore First H1 (# Note Title)',
     ignoreH1Desc: 'When enabled, the first H1 heading at the top of the note will not generate a dash bar, showing only sub-sections.',
     dockPositionName: 'Dock Position',
@@ -111,6 +114,8 @@ const I18N = {
     tabTitle: 'Charter Pipeline 设置',
     showExcerptName: '开启正文 3 行摘要预览',
     showExcerptDesc: '在悬浮气泡中换行展示正文开头的 3 行摘要（支持 LaTeX / KaTeX 公式渲染，超出 3 行自动显示 ... 省略号）。关闭后仅展示纯净标题。',
+    excerptLengthName: '摘要字符长度',
+    excerptLengthDesc: '浮层气泡与搜索面板中提取正文摘要的最大字符数（60 - 300，默认 140）。',
     ignoreH1Name: '忽略文档首个一级大标题 (# 篇名)',
     ignoreH1Desc: '开启后，文章最开头的第一个 H1 大标题不会生成横线，仅展示正文小节。',
     dockPositionName: '靠栏停靠位置',
@@ -212,9 +217,12 @@ class SoundEngine {
   }
 
   getAudioContext() {
-    if (!this.ctx && (typeof window !== 'undefined')) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!this.ctx) {
+      const AudioCtx = (typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext))
+        || (typeof global !== 'undefined' && (global.AudioContext || global.webkitAudioContext))
+        || SoundEngine._lastAudioContextClass;
       if (AudioCtx) {
+        SoundEngine._lastAudioContextClass = AudioCtx;
         this.ctx = new AudioCtx();
       }
     }
@@ -222,6 +230,19 @@ class SoundEngine {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
+  }
+
+  destroy() {
+    if (this.ctx) {
+      try {
+        if (typeof this.ctx.close === 'function') {
+          this.ctx.close().catch(() => {});
+        }
+      } catch (e) {
+        // ignore
+      }
+      this.ctx = null;
+    }
   }
 
   playClick(volumePct = 50) {
@@ -317,6 +338,50 @@ class SoundEngine {
   }
 }
 
+function findMathRanges(text) {
+  const ranges = [];
+  let openIndex = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '$') {
+      let backslashes = 0;
+      for (let j = i - 1; j >= 0 && text[j] === '\\'; j--) {
+        backslashes++;
+      }
+      if (backslashes % 2 === 0) {
+        if (openIndex === -1) {
+          openIndex = i;
+        } else {
+          ranges.push({ start: openIndex, end: i + 1 });
+          openIndex = -1;
+        }
+      }
+    }
+  }
+  return { ranges, unclosedIndex: openIndex };
+}
+
+function truncateExcerpt(text, maxLength = 200) {
+  if (!text || text.length <= maxLength) return text || '';
+  const { ranges } = findMathRanges(text);
+  let cutIndex = maxLength;
+  const insideRange = ranges.find((r) => cutIndex > r.start && cutIndex < r.end);
+  if (insideRange) {
+    const textBefore = text.substring(0, insideRange.start).trim();
+    if (textBefore.length === 0 || insideRange.end <= maxLength + 25) {
+      cutIndex = insideRange.end;
+    } else {
+      cutIndex = insideRange.start;
+    }
+  }
+  let truncated = text.substring(0, cutIndex).trim();
+  const { unclosedIndex } = findMathRanges(truncated);
+  if (unclosedIndex !== -1) {
+    truncated = truncated.substring(0, unclosedIndex).trim();
+  }
+  truncated = truncated.replace(/[\s\.,;:!?，。！？]+$/, '');
+  return truncated ? truncated + '...' : '...';
+}
+
 class ChapterParser {
   static parse(content, headings, settings) {
     if (!headings || headings.length === 0) return [];
@@ -360,36 +425,81 @@ class ChapterParser {
 
       if (!cleanTitle) cleanTitle = currentH.heading;
 
-      // 纯净提取正文前 3 行摘要（过滤 Callout 容器框，保留 LaTeX 数学公式）
+      // 纯净提取正文前 3 行摘要（早期退出 O(1) 扫描，过滤 Callout，保留 LaTeX 数学公式）
       let summaryMarkdown = '';
       if (showExcerpt && lines.length > 0) {
-        const startLine = currentH.position.start.line;
-        const endLine = nextH ? nextH.position.start.line - 1 : totalLines - 1;
-        const chapterLines = lines.slice(startLine + 1, endLine + 1);
+        const startLine = currentH.position?.start?.line ?? 0;
+        const rawEndLine = nextH ? nextH.position.start.line - 1 : totalLines - 1;
+        const endLine = Math.min(rawEndLine, totalLines - 1);
+        const maxExcerptLen = (settings && typeof settings.excerptLength === 'number' && settings.excerptLength > 0)
+          ? settings.excerptLength
+          : 140;
 
-        const cleanedLines = chapterLines.map((l) => {
-          let s = l.replace(/<!--[\s\S]*?-->/g, '').trim();
+        const candidateLines = [];
+        let inMathBlock = false;
+        let inCodeBlock = false;
+        let collectedChars = 0;
+        let validVisualLines = 0;
+
+        for (let lineIdx = startLine + 1; lineIdx <= endLine && lineIdx < totalLines; lineIdx++) {
+          const rawLine = lines[lineIdx];
+          if (typeof rawLine !== 'string') continue;
+          let s = rawLine.replace(/<!--[\s\S]*?-->/g, '').trim();
+
+          // Code fence handling
+          if (s.startsWith('```') || s.startsWith('~~~')) {
+            inCodeBlock = !inCodeBlock;
+            continue;
+          }
+          if (inCodeBlock) continue;
+
+          // Callout markers handling
           while (s.startsWith('>')) {
             s = s.substring(1).trim();
           }
           s = s.replace(/^\[![\w-]+\]\s*/i, '');
           s = s.replace(/\[\[.*?\|(.*?)\]\]/g, '$1').replace(/\[\[(.*?)\]\]/g, '$1');
-          return s;
-        }).filter((s) => s && !s.startsWith('#') && !s.startsWith('---') && !s.startsWith('```'));
 
-        let fullText = cleanedLines.join('\n');
-        fullText = fullText.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, math) => {
-          const compact = math.replace(/\r?\n/g, ' ').replace(/\\\\/g, ' ').trim();
-          return '$' + compact + '$';
-        });
+          // Math block detection ($$)
+          const mathDelims = s.match(/\$\$/g);
+          if (mathDelims && mathDelims.length % 2 !== 0) {
+            inMathBlock = !inMathBlock;
+          }
 
-        let singleLine = fullText.split(/\r?\n/).join(' ').replace(/\s+/g, ' ').trim();
-        if (singleLine.length > 200) {
-          singleLine = singleLine.substring(0, 200);
+          if (!s || s.startsWith('#') || s.startsWith('---')) {
+            continue;
+          }
+
+          candidateLines.push(s);
+          collectedChars += s.length;
+
+          if (!inMathBlock) {
+            if (!s.endsWith(':') && !s.endsWith('：')) {
+              validVisualLines++;
+            }
+          }
+
+          // Early-exit: stop immediately once 3 valid visual lines or sufficient characters are gathered (outside of open math blocks)
+          if (!inMathBlock && (validVisualLines >= 3 || collectedChars >= maxExcerptLen + 50)) {
+            break;
+          }
         }
 
-        if (singleLine) {
-          summaryMarkdown = singleLine;
+        if (candidateLines.length > 0) {
+          let fullText = candidateLines.join('\n');
+          fullText = fullText.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, (match, math) => {
+            const compact = math.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+            return '$' + compact + '$';
+          });
+
+          let singleLine = fullText.split(/\r?\n/).join(' ').replace(/\s+/g, ' ').trim();
+          if (singleLine.length > maxExcerptLen) {
+            singleLine = truncateExcerpt(singleLine, maxExcerptLen);
+          }
+
+          if (singleLine) {
+            summaryMarkdown = singleLine;
+          }
         }
       }
 
@@ -408,6 +518,9 @@ class ChapterParser {
   }
 }
 
+ChapterParser.findMathRanges = findMathRanges;
+ChapterParser.truncateExcerpt = truncateExcerpt;
+
 function updateHierarchyFolding(chapters, dashElements, activeIdx, hierarchyMode) {
   if (!chapters || !dashElements || dashElements.length === 0) return;
   const mode = hierarchyMode || 'all';
@@ -415,6 +528,7 @@ function updateHierarchyFolding(chapters, dashElements, activeIdx, hierarchyMode
   if (mode === 'all') {
     for (let i = 0; i < dashElements.length; i++) {
       dashElements[i].classList.remove('is-collapsed');
+      dashElements[i].setAttribute('tabindex', '0');
     }
     return;
   }
@@ -424,8 +538,10 @@ function updateHierarchyFolding(chapters, dashElements, activeIdx, hierarchyMode
       const chap = chapters[i];
       if (chap && chap.level >= 3) {
         dashElements[i].classList.add('is-collapsed');
+        dashElements[i].setAttribute('tabindex', '-1');
       } else {
         dashElements[i].classList.remove('is-collapsed');
+        dashElements[i].setAttribute('tabindex', '0');
       }
     }
     return;
@@ -468,11 +584,14 @@ function updateHierarchyFolding(chapters, dashElements, activeIdx, hierarchyMode
         const inActiveBranch = (i >= branchStart && i < branchEnd);
         if (inActiveBranch) {
           dashElements[i].classList.remove('is-collapsed');
+          dashElements[i].setAttribute('tabindex', '0');
         } else {
           dashElements[i].classList.add('is-collapsed');
+          dashElements[i].setAttribute('tabindex', '-1');
         }
       } else {
         dashElements[i].classList.remove('is-collapsed');
+        dashElements[i].setAttribute('tabindex', '0');
       }
     }
   }
@@ -505,6 +624,46 @@ class ChapterSuggestModal extends SuggestModal {
 
   getItemText(item) {
     return (item.title || '') + ' ' + (item.summaryMarkdown || '');
+  }
+
+  getSuggestions(query) {
+    if (!query || !query.trim()) {
+      return this.chapters;
+    }
+
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const file = this.view?.file;
+
+    return this.chapters.filter((chap) => {
+      const markers = (this.plugin?.getChapterMarkers && file)
+        ? (this.plugin.getChapterMarkers(file, chap) || {})
+        : {};
+
+      const titleLower = (chap.title || '').toLowerCase();
+      const rawLower = (chap.rawHeading || '').toLowerCase();
+      const excerptLower = (chap.summaryMarkdown || '').toLowerCase();
+
+      return tokens.every((token) => {
+        const hMatch = token.match(/^h([1-6])$/i);
+        if (hMatch) {
+          return chap.level === parseInt(hMatch[1], 10);
+        }
+        const hashMatch = token.match(/^(#{1,6})$/);
+        if (hashMatch) {
+          return chap.level === hashMatch[1].length;
+        }
+
+        if (token === 'revisit' || token === '待复习') {
+          return markers.revisit === true;
+        }
+
+        if (token === 'important' || token === '重点') {
+          return markers.important === true;
+        }
+
+        return titleLower.includes(token) || rawLower.includes(token) || excerptLower.includes(token);
+      });
+    });
   }
 
   renderSuggestion(item, el) {
@@ -588,6 +747,23 @@ class ChapterPipelineSettingTab extends PluginSettingTab {
             this.plugin.updateAllMarkdownViews();
           })
       );
+
+    if (this.plugin.settings.showExcerpt !== false) {
+      new Setting(containerEl)
+        .setName(strings.excerptLengthName || 'Excerpt length (characters)')
+        .setDesc(strings.excerptLengthDesc || 'Maximum length of excerpt text extracted for tooltip and palette previews (60 - 300).')
+        .addSlider((slider) =>
+          slider
+            .setLimits(60, 300, 10)
+            .setValue(this.plugin.settings.excerptLength || 140)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.excerptLength = value;
+              await this.plugin.saveSettings();
+              this.plugin.updateAllMarkdownViews();
+            })
+        );
+    }
 
     new Setting(containerEl)
       .setName(strings.ignoreH1Name)
@@ -893,54 +1069,65 @@ class ChapterPipelinePlugin extends Plugin {
           }
         })
       );
+      this.registerEvent(
+        this.app.vault.on('delete', (file) => {
+          if (file?.path) {
+            this.pruneDeletedReadingState(file.path);
+          }
+        })
+      );
     }
 
-    // 监听活动 Leaf 切换
-    this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
-        this.scheduleUpdateAllMarkdownViews();
-      })
-    );
+    // 监听工作区事件
+    if (this.app.workspace && typeof this.app.workspace.on === 'function') {
+      this.registerEvent(
+        this.app.workspace.on('active-leaf-change', () => {
+          this.scheduleUpdateAllMarkdownViews();
+        })
+      );
 
-    // 监听文件打开（确保编辑与阅读模式开篇即加载横线流）
-    this.registerEvent(
-      this.app.workspace.on('file-open', () => {
-        this.scheduleUpdateAllMarkdownViews();
-      })
-    );
+      // 监听文件打开（确保编辑与阅读模式开篇即加载横线流）
+      this.registerEvent(
+        this.app.workspace.on('file-open', () => {
+          this.scheduleUpdateAllMarkdownViews();
+        })
+      );
 
-    // 监听视图布局与视图模式切换（如 Ctrl+E 编辑/阅读视图切换）
-    this.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        this.scheduleUpdateAllMarkdownViews();
-      })
-    );
+      // 监听视图布局与视图模式切换（如 Ctrl+E 编辑/阅读视图切换）
+      this.registerEvent(
+        this.app.workspace.on('layout-change', () => {
+          this.scheduleUpdateAllMarkdownViews();
+        })
+      );
 
-    // 监听编辑模式输入（防抖实时刷新章节大纲）
-    let editorChangeTimeout = null;
-    this.registerEvent(
-      this.app.workspace.on('editor-change', (editor, info) => {
-        if (editorChangeTimeout) clearTimeout(editorChangeTimeout);
-        editorChangeTimeout = setTimeout(() => {
-          if (info && info.file) {
-            const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-            if (activeView && activeView.file && activeView.file.path === info.file.path) {
-              this.attachStepperToView(activeView);
+      // 监听编辑模式输入（防抖实时刷新章节大纲）
+      let editorChangeTimeout = null;
+      this.registerEvent(
+        this.app.workspace.on('editor-change', (editor, info) => {
+          if (editorChangeTimeout) clearTimeout(editorChangeTimeout);
+          editorChangeTimeout = setTimeout(() => {
+            if (info && info.file) {
+              const activeView = this.app.workspace?.getActiveViewOfType ? this.app.workspace.getActiveViewOfType(MarkdownView) : null;
+              if (activeView && activeView.file && activeView.file.path === info.file.path) {
+                this.attachStepperToView(activeView);
+              }
             }
-          }
-        }, 300);
-      })
-    );
+          }, 300);
+        })
+      );
+    }
 
     // 监听元数据缓存更新
-    this.registerEvent(
-      this.app.metadataCache.on('changed', (file) => {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (activeView && activeView.file && activeView.file.path === file.path) {
-          this.attachStepperToView(activeView);
-        }
-      })
-    );
+    if (this.app.metadataCache && typeof this.app.metadataCache.on === 'function') {
+      this.registerEvent(
+        this.app.metadataCache.on('changed', (file) => {
+          const activeView = this.app.workspace?.getActiveViewOfType ? this.app.workspace.getActiveViewOfType(MarkdownView) : null;
+          if (activeView && activeView.file && activeView.file.path === file.path) {
+            this.attachStepperToView(activeView);
+          }
+        })
+      );
+    }
 
     // 注册快捷跳转与章节搜索命令
     this.addCommand({
@@ -1053,15 +1240,20 @@ class ChapterPipelinePlugin extends Plugin {
       }
     });
 
-    this.app.workspace.onLayoutReady(() => {
-      this.scheduleUpdateAllMarkdownViews();
-    });
+    if (this.app.workspace && typeof this.app.workspace.onLayoutReady === 'function') {
+      this.app.workspace.onLayoutReady(() => {
+        this.scheduleUpdateAllMarkdownViews();
+      });
+    }
   }
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     if (this.settings.showExcerpt === undefined) {
       this.settings.showExcerpt = true;
+    }
+    if (typeof this.settings.excerptLength !== 'number' || this.settings.excerptLength < 60 || this.settings.excerptLength > 300) {
+      this.settings.excerptLength = 140;
     }
     if (this.settings.activeColor === '#10b981') {
       this.settings.activeColor = '#3b82f6';
@@ -1125,6 +1317,29 @@ class ChapterPipelinePlugin extends Plugin {
       this.saveSettings().catch(() => {});
     }
     return cleanedCount;
+  }
+
+  async pruneDeletedReadingState(deletedPath) {
+    if (!deletedPath || typeof deletedPath !== 'string') return 0;
+    const readingState = this.ensureReadingState();
+    if (!readingState?.files) return 0;
+
+    let removedCount = 0;
+    const prefix = deletedPath.endsWith('/') ? deletedPath : `${deletedPath}/`;
+    for (const path of Object.keys(readingState.files)) {
+      if (path === deletedPath || path.startsWith(prefix)) {
+        delete readingState.files[path];
+        if (this.resumePromptedPaths && typeof this.resumePromptedPaths.delete === 'function') {
+          this.resumePromptedPaths.delete(path);
+        }
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      await this.saveSettings();
+    }
+    return removedCount;
   }
 
   isReadingBookmarksEnabled() {
@@ -1195,6 +1410,54 @@ class ChapterPipelinePlugin extends Plugin {
   isActiveMarkdownView(view) {
     if (!view || !this.app?.workspace?.getActiveViewOfType) return false;
     return this.app.workspace.getActiveViewOfType(MarkdownView) === view;
+  }
+
+  isScrollEventRelevant(event, view, container) {
+    if (!event || !event.target) return true;
+    const target = event.target;
+
+    // Check direct equality
+    if (target === container) return true;
+    if (view?.containerEl && target === view.containerEl) return true;
+
+    // Check standard DOM contains
+    if (container && typeof container.contains === 'function') {
+      try {
+        if (container.contains(target)) return true;
+      } catch (e) {}
+    }
+    if (view?.containerEl && typeof view.containerEl.contains === 'function') {
+      try {
+        if (view.containerEl.contains(target)) return true;
+      } catch (e) {}
+    }
+
+    // Tree walk fallback via parentElement
+    let curr = target.parentElement;
+    while (curr) {
+      if (curr === container || (view?.containerEl && curr === view.containerEl)) {
+        return true;
+      }
+      curr = curr.parentElement;
+    }
+
+    // Global target check: only active markdown view processes document/window scroll
+    const isGlobalTarget = (
+      (typeof document !== 'undefined' && (target === document || target === document.documentElement || target === document.body)) ||
+      (typeof window !== 'undefined' && target === window)
+    );
+    if (isGlobalTarget) {
+      return this.isActiveMarkdownView(view);
+    }
+
+    // Check if target is an ancestor containing container
+    if (typeof target.contains === 'function') {
+      try {
+        if (target.contains(container)) return true;
+      } catch (e) {}
+    }
+
+    return false;
   }
 
   recordReadingPosition(view, chapter) {
@@ -1776,40 +2039,14 @@ class ChapterPipelinePlugin extends Plugin {
         dashItem.setAttribute('aria-label', chap.title || chap.rawHeading || `H${chap.level}`);
       }
 
-      // 鼠标悬浮：横线屏幕绝对中心点 100% 对齐气泡垂直几何中心
-      dashItem.addEventListener('mouseenter', () => {
+      // 鼠标悬浮与键盘焦点：横线屏幕绝对中心点 100% 对齐气泡垂直几何中心
+      const showTooltip = () => {
         if (!floatingTooltip) return;
-        const itemRect = dashItem.getBoundingClientRect();
 
-        // 横线条的精确屏幕垂直几何中点
-        const centerY = itemRect.top + (itemRect.height / 2);
-        const isRightDock = this.settings.dockPosition === 'right';
-        const tooltipWidth = floatingTooltip.offsetWidth || 290;
-        let leftX;
-
-        const targetWindow = (doc && doc.defaultView) || (typeof window !== 'undefined' ? window : null);
-        const winWidth = (targetWindow && targetWindow.innerWidth) ? targetWindow.innerWidth : 1200;
-        const winHeight = (targetWindow && targetWindow.innerHeight) ? targetWindow.innerHeight : 800;
-
-        if (isRightDock) {
-          floatingTooltip.classList.add('dock-right');
-          leftX = Math.max(10, itemRect.left - tooltipWidth - 12);
-        } else {
-          floatingTooltip.classList.remove('dock-right');
-          leftX = Math.min(winWidth - tooltipWidth - 10, itemRect.right + 12);
-        }
-
-        const tooltipHeight = floatingTooltip.offsetHeight || 140;
-        const minCenterY = tooltipHeight / 2 + 12;
-        const maxCenterY = winHeight - tooltipHeight / 2 - 12;
-        const clampedY = Math.max(minCenterY, Math.min(maxCenterY, centerY));
-
-        floatingTooltip.style.top = `${clampedY}px`;
-        floatingTooltip.style.left = `${leftX}px`;
-
+        // 1. 先清空并完整渲染气泡 DOM，确保获取真实的几何尺寸（尤其是包含长公式或摘要时）
         floatingTooltip.empty();
 
-        // 1. 标题区（头部容器：Linear 风格微胶囊徽章 + 加粗标题，当前激活章节高亮，支持行内公式）
+        // 标题区（头部容器：Linear 风格微胶囊徽章 + 加粗标题，当前激活章节高亮，支持行内公式）
         const headerEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-header' });
         const isActive = dashItem.classList.contains('active');
         const badgeCls = `codex-level-badge level-${Math.min(chap.level, 6)}${isActive ? ' is-active' : ''}`;
@@ -1820,7 +2057,7 @@ class ChapterPipelinePlugin extends Plugin {
         const titleEl = headerEl.createDiv({ cls: 'codex-tooltip-title' });
         MarkdownRenderer.render(this.app, formatTitleForRender(chap.title), titleEl, '', this);
 
-        // 2. 正文 3 行纯文本摘要（支持 KaTeX 公式渲染，彻底过滤 Callout 容器）
+        // 正文 3 行纯文本摘要（支持 KaTeX 公式渲染，彻底过滤 Callout 容器）
         if (this.settings.showExcerpt !== false && chap.summaryMarkdown) {
           const excerptEl = floatingTooltip.createDiv({ cls: 'codex-tooltip-excerpt' });
           MarkdownRenderer.render(this.app, chap.summaryMarkdown, excerptEl, '', this);
@@ -1834,6 +2071,41 @@ class ChapterPipelinePlugin extends Plugin {
           });
         }
 
+        // 2. 在渲染完成后测量元素真实尺寸
+        const tooltipWidth = floatingTooltip.offsetWidth || 290;
+        const tooltipHeight = floatingTooltip.offsetHeight || 140;
+
+        // 3. 计算横线条几何中点及视口边界限制
+        const itemRect = dashItem.getBoundingClientRect();
+        const centerY = itemRect.top + (itemRect.height / 2);
+        const isRightDock = this.settings.dockPosition === 'right';
+
+        const targetWindow = (doc && doc.defaultView) || (typeof window !== 'undefined' ? window : null);
+        const winWidth = (targetWindow && targetWindow.innerWidth) ? targetWindow.innerWidth : 1200;
+        const winHeight = (targetWindow && targetWindow.innerHeight) ? targetWindow.innerHeight : 800;
+
+        let leftX;
+        if (isRightDock) {
+          floatingTooltip.classList.add('dock-right');
+          leftX = Math.max(10, itemRect.left - tooltipWidth - 12);
+        } else {
+          floatingTooltip.classList.remove('dock-right');
+          leftX = Math.min(winWidth - tooltipWidth - 10, itemRect.right + 12);
+        }
+
+        const minCenterY = tooltipHeight / 2 + 12;
+        const maxCenterY = winHeight - tooltipHeight / 2 - 12;
+        let clampedY;
+        if (minCenterY > maxCenterY) {
+          clampedY = winHeight / 2;
+        } else {
+          clampedY = Math.max(minCenterY, Math.min(maxCenterY, centerY));
+        }
+
+        // 4. 设置最终坐标并展现气泡
+        floatingTooltip.style.top = `${clampedY}px`;
+        floatingTooltip.style.left = `${leftX}px`;
+
         if (this.settings.tooltipGlassmorphism === false) {
           floatingTooltip.classList.add('is-solid');
         } else {
@@ -1841,13 +2113,18 @@ class ChapterPipelinePlugin extends Plugin {
         }
 
         floatingTooltip.classList.add('is-visible');
-      });
+      };
 
-      dashItem.addEventListener('mouseleave', () => {
+      const hideTooltip = () => {
         if (floatingTooltip) {
           floatingTooltip.classList.remove('is-visible');
         }
-      });
+      };
+
+      dashItem.addEventListener('mouseenter', showTooltip);
+      dashItem.addEventListener('mouseleave', hideTooltip);
+      dashItem.addEventListener('focus', showTooltip);
+      dashItem.addEventListener('blur', hideTooltip);
 
       const navigateToChapter = () => {
         isClickScrolling = true;
@@ -1933,7 +2210,10 @@ class ChapterPipelinePlugin extends Plugin {
       updateRailIndicator(activeIdx);
     };
 
-    const throttledScroll = () => {
+    const throttledScroll = (event) => {
+      if (!this.isScrollEventRelevant(event, view, container)) {
+        return;
+      }
       if (rAF) return;
       let executed = false;
       rAF = requestAnimationFrame(() => {
@@ -2022,6 +2302,13 @@ class ChapterPipelinePlugin extends Plugin {
     const flashEls = container.querySelectorAll('.is-flashing, .flashing, .is-highlighted, .highlighted, .mod-highlighted');
     for (let i = 0; i < flashEls.length; i++) {
       const el = flashEls[i];
+      if (!el || !el.classList) continue;
+      // Protect user <mark> and .cm-highlight elements (and any elements inside them)
+      const isMark = (el.tagName && el.tagName.toLowerCase() === 'mark') || el.classList.contains('cm-highlight');
+      const insideMark = typeof el.closest === 'function' && (el.closest('mark') || el.closest('.cm-highlight'));
+      if (isMark || insideMark) {
+        continue;
+      }
       el.classList.remove('is-flashing', 'flashing', 'is-highlighted', 'highlighted', 'mod-highlighted');
     }
   }
@@ -2516,6 +2803,9 @@ class ChapterPipelinePlugin extends Plugin {
 
   onunload() {
     console.log('Unloading Charter Pipeline Pro');
+    if (this.soundEngine && typeof this.soundEngine.destroy === 'function') {
+      this.soundEngine.destroy();
+    }
     if (this.refreshFrame !== null) cancelAnimationFrame(this.refreshFrame);
     if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
     if (this.readingSaveTimer !== null) {

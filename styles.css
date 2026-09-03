@@ -217,49 +217,19 @@
   border-radius: 1.5px;
 }
 
-/* 彻底清除 Obsidian 默认在跳转与阅读时附加的正文文字/行/段落背景高亮及闪烁效果（保持正文纯净，不产生多余高亮） */
-.workspace-leaf .markdown-reading-view,
-.workspace-leaf .markdown-preview-view,
-.workspace-leaf .markdown-source-view,
-.workspace-leaf .cm-editor,
-.workspace-leaf .markdown-rendered {
-  --text-highlight-bg: transparent;
-  --text-highlight-bg-active: transparent;
-}
-
+/* 清除跳转至标题时的瞬间闪烁动画与高亮（严格限定在章节容器与标题元素，绝不污染正文 mark 高亮） */
 body .workspace-leaf .markdown-preview-section.is-flashing,
 body .workspace-leaf .markdown-preview-section.is-highlighted,
 body .workspace-leaf .markdown-preview-section.flashing,
 body .workspace-leaf .markdown-preview-section.highlighted,
 body .workspace-leaf .markdown-preview-section.mod-highlighted,
-body .workspace-leaf .markdown-rendered .is-flashing,
-body .workspace-leaf .markdown-rendered .is-highlighted,
-body .workspace-leaf .markdown-rendered .flashing,
-body .workspace-leaf .markdown-rendered .highlighted,
-body .workspace-leaf .markdown-rendered .mod-highlighted,
-body .workspace-leaf .markdown-rendered div.is-flashing,
-body .workspace-leaf .markdown-rendered div.is-highlighted,
-body .workspace-leaf .markdown-rendered p.is-flashing,
-body .workspace-leaf .markdown-rendered p.is-highlighted,
-body .workspace-leaf .markdown-rendered h1.is-flashing,
-body .workspace-leaf .markdown-rendered h2.is-flashing,
-body .workspace-leaf .markdown-rendered h3.is-flashing,
-body .workspace-leaf .markdown-rendered h4.is-flashing,
-body .workspace-leaf .markdown-rendered h5.is-flashing,
-body .workspace-leaf .markdown-rendered h6.is-flashing,
-body .workspace-leaf .markdown-rendered h1.is-highlighted,
-body .workspace-leaf .markdown-rendered h2.is-highlighted,
-body .workspace-leaf .markdown-rendered h3.is-highlighted,
-body .workspace-leaf .markdown-rendered h4.is-highlighted,
-body .workspace-leaf .markdown-rendered h5.is-highlighted,
-body .workspace-leaf .markdown-rendered h6.is-highlighted,
+body .workspace-leaf .markdown-rendered :is(h1, h2, h3, h4, h5, h6).is-flashing,
+body .workspace-leaf .markdown-rendered :is(h1, h2, h3, h4, h5, h6).is-highlighted,
+body .workspace-leaf .markdown-rendered :is(h1, h2, h3, h4, h5, h6).flashing,
+body .workspace-leaf .markdown-rendered :is(h1, h2, h3, h4, h5, h6).highlighted,
+body .workspace-leaf .markdown-rendered :is(h1, h2, h3, h4, h5, h6).mod-highlighted,
 body .workspace-leaf .cm-active-line.is-flashing,
-body .workspace-leaf .cm-line.is-flashing,
-body .workspace-leaf .is-flashing,
-body .workspace-leaf .flashing,
-body .workspace-leaf .is-highlighted,
-body .workspace-leaf .highlighted,
-body .workspace-leaf .mod-highlighted {
+body .workspace-leaf .cm-line.is-flashing {
   animation: none;
   -webkit-animation: none;
   background: transparent;
@@ -268,6 +238,12 @@ body .workspace-leaf .mod-highlighted {
   outline: none;
   border-radius: 0;
   transition: none;
+}
+
+/* 保护用户原生 ==高亮== 与 Live Preview cm-highlight 不受任何样式污染 */
+body .workspace-leaf mark,
+body .workspace-leaf .cm-highlight {
+  background-color: var(--text-highlight-bg);
 }
 
 /* 鼠标悬浮态：保持左对齐基线，按比例磁吸弹簧果冻延展 */
@@ -297,11 +273,15 @@ body .workspace-leaf .mod-highlighted {
 }
 
 /* 当前项标注其在本笔记大纲中的序号。横线本身依然保持极简，但不再
-   因层级折叠而被误认为“列表第一项”。 */
+   因层级折叠而被误认为“列表第一项”。固定垂直基准线，杜绝因横线长短变化导致的水平抖动 */
+.codex-stepper-container.show-chapter-order .codex-dash-item {
+  min-width: calc(var(--dash-w1, 20px) + 12px);
+}
+
 .codex-stepper-container.show-chapter-order .codex-dash-item.active::after {
   content: attr(data-chapter-order);
   position: absolute;
-  left: calc(100% + 2px);
+  left: calc(var(--dash-w1, 20px) + 6px);
   top: 50%;
   transform: translateY(-50%);
   color: var(--codex-active-color, #3b82f6);
@@ -314,7 +294,7 @@ body .workspace-leaf .mod-highlighted {
 
 .codex-stepper-container.show-chapter-order.dock-right .codex-dash-item.active::after {
   left: auto;
-  right: calc(100% + 2px);
+  right: calc(var(--dash-w1, 20px) + 6px);
 }
 
 .codex-dash-item.active:hover .codex-dash-bar {
@@ -335,6 +315,8 @@ body .workspace-leaf .mod-highlighted {
   padding: 10px 14px;
   width: 290px;
   max-width: 330px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   box-sizing: border-box;
   z-index: 99999;
   pointer-events: none;
